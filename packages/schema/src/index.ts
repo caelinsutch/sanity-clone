@@ -6,7 +6,7 @@
  *   - `post`: a blog post with title, excerpt, body, author
  */
 
-import { defineField, defineSchema, defineType } from "@repo/core/schema"
+import { defineField, defineInlineType, defineSchema, defineType } from "@repo/core/schema"
 
 export const siteSettings = defineType({
   name: "siteSettings",
@@ -103,8 +103,143 @@ export const post = defineType({
   },
 })
 
+// --- Inline slice types used by the `page` document type below --------------
+
+/** Hero slice: a big heading + subheading + optional CTA label. */
+export const heroSlice = defineInlineType({
+  typeName: "heroSlice",
+  title: "Hero",
+  fields: [
+    defineField({
+      name: "heading",
+      title: "Heading",
+      type: "string",
+      validation: { required: true, min: 1, max: 120 },
+    }),
+    defineField({
+      name: "subheading",
+      title: "Subheading",
+      type: "text",
+      rows: 2,
+      validation: { max: 200 },
+    }),
+    defineField({ name: "ctaLabel", title: "CTA label", type: "string" }),
+    defineField({ name: "ctaHref", title: "CTA URL", type: "url" }),
+  ],
+})
+
+/** Feature grid: a title + N feature cards. */
+export const featureGridSlice = defineInlineType({
+  typeName: "featureGridSlice",
+  title: "Feature grid",
+  fields: [
+    defineField({
+      name: "heading",
+      title: "Section heading",
+      type: "string",
+      validation: { max: 80 },
+    }),
+    defineField({
+      name: "features",
+      title: "Features",
+      type: "array",
+      of: [
+        {
+          name: "feature",
+          type: "object",
+          typeName: "feature",
+          title: "Feature",
+          fields: [
+            defineField({
+              name: "title",
+              title: "Title",
+              type: "string",
+              validation: { required: true, max: 60 },
+            }),
+            defineField({
+              name: "description",
+              title: "Description",
+              type: "text",
+              rows: 2,
+              validation: { max: 200 },
+            }),
+          ],
+        },
+      ],
+      validation: { min: 1 },
+    }),
+  ],
+})
+
+/** Call to action: short prompt + big button. */
+export const ctaSlice = defineInlineType({
+  typeName: "ctaSlice",
+  title: "Call to action",
+  fields: [
+    defineField({
+      name: "heading",
+      title: "Heading",
+      type: "string",
+      validation: { required: true, max: 80 },
+    }),
+    defineField({ name: "buttonLabel", title: "Button label", type: "string" }),
+    defineField({ name: "buttonHref", title: "Button URL", type: "url" }),
+  ],
+})
+
+/** Free-form rich text slice. */
+export const richTextSlice = defineInlineType({
+  typeName: "richTextSlice",
+  title: "Rich text",
+  fields: [
+    defineField({
+      name: "body",
+      title: "Body",
+      type: "blockContent",
+      validation: { required: true, min: 1 },
+    }),
+  ],
+})
+
+/** Page document: a composable content type built from ordered slices. */
+export const page = defineType({
+  name: "page",
+  title: "Page",
+  type: "document",
+  fields: [
+    defineField({
+      name: "title",
+      title: "Title",
+      type: "string",
+      validation: { required: true, min: 1, max: 120 },
+    }),
+    defineField({
+      name: "slug",
+      title: "Slug",
+      type: "slug",
+      source: "title",
+      validation: {
+        required: true,
+        pattern: "^[a-z0-9-]+$",
+      },
+    }),
+    defineField({
+      name: "slices",
+      title: "Slices",
+      type: "array",
+      of: [heroSlice, featureGridSlice, richTextSlice, ctaSlice],
+      validation: { min: 1 },
+    }),
+  ],
+  preview: { select: { title: "title" } },
+  locations: (doc) => {
+    const slug = (doc as { slug?: { current?: string } }).slug?.current
+    return slug ? [{ title: "Page", href: `/${slug}` }] : []
+  },
+})
+
 export const schema = defineSchema({
-  types: [siteSettings, author, post],
+  types: [siteSettings, author, post, page],
   routes: [
     {
       pattern: "/",
@@ -116,6 +251,14 @@ export const schema = defineSchema({
       type: "post",
       resolve: (params: Record<string, string>) => ({
         filter: '*[_type == "post" && slug.current == $slug][0]',
+        params: { slug: params.slug },
+      }),
+    },
+    {
+      pattern: "/:slug",
+      type: "page",
+      resolve: (params: Record<string, string>) => ({
+        filter: '*[_type == "page" && slug.current == $slug][0]',
         params: { slug: params.slug },
       }),
     },
@@ -203,5 +346,54 @@ export const seedData = [
       },
     ],
     author: { _type: "reference", _ref: "author-jane" },
+  },
+  {
+    _id: "page-home",
+    _type: "page",
+    title: "Home",
+    slug: { current: "home" },
+    slices: [
+      {
+        _type: "heroSlice",
+        _key: "hero1",
+        heading: "Composable content, editable inline.",
+        subheading:
+          "Build marketing pages out of reusable slices. Editors see their changes in the live preview as they type.",
+        ctaLabel: "Read the blog",
+        ctaHref: "/posts/hello-world",
+      },
+      {
+        _type: "featureGridSlice",
+        _key: "fg1",
+        heading: "Why slices",
+        features: [
+          {
+            _type: "feature",
+            _key: "f1",
+            title: "Reorder instantly",
+            description: "Drag slices around in the Studio and see the page change live.",
+          },
+          {
+            _type: "feature",
+            _key: "f2",
+            title: "Per-slice components",
+            description: "Every slice is a React component on the consumer side.",
+          },
+          {
+            _type: "feature",
+            _key: "f3",
+            title: "Typed ends to end",
+            description: "Generated TypeScript types flow from schema to rendered output.",
+          },
+        ],
+      },
+      {
+        _type: "ctaSlice",
+        _key: "cta1",
+        heading: "Ready to try it?",
+        buttonLabel: "Visit the studio",
+        buttonHref: "http://localhost:3333/",
+      },
+    ],
   },
 ]

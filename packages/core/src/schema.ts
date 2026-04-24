@@ -92,6 +92,11 @@ export interface ArrayField extends BaseField {
 export interface ObjectField extends BaseField {
   type: "object"
   fields: FieldDef[]
+  /**
+   * For inline-object items inside an array: their `_type` discriminator.
+   * Ignored for document-level object fields.
+   */
+  typeName?: string
 }
 
 export interface BlockContentField extends BaseField {
@@ -192,6 +197,31 @@ export function defineField<T extends FieldDef>(def: T): T {
 }
 export function defineSchema<T extends Schema>(schema: T): T {
   return schema
+}
+
+/**
+ * Declare an inline object shape for use inside `array.of: [...]`.
+ * Items stored in the array carry `_type: <typeName>` + `_key` + field values.
+ *
+ *   const hero = defineInlineType({
+ *     typeName: "hero",
+ *     title: "Hero block",
+ *     fields: [defineField({ name: "heading", type: "string" })],
+ *   })
+ *   array.of: [hero, ...]
+ */
+export function defineInlineType(def: {
+  typeName: string
+  title: string
+  fields: FieldDef[]
+}): ObjectField {
+  return {
+    name: def.typeName,
+    title: def.title,
+    type: "object",
+    typeName: def.typeName,
+    fields: def.fields,
+  }
 }
 
 export function getTypeDef(schema: Schema, name: string): DocumentTypeDef | undefined {

@@ -36,14 +36,16 @@ apps/
                  SSG with dynamicParams for new-slug preview
 
 packages/
-  core           Types (documents, mutations, perspectives, CSM) + GROQ-lite parser + executor
+  core           Types (documents, mutations, perspectives, CSM) + GROQ parser + executor + validator
   client         Sanity-style HTTP client with stega encoding + CSM + Next cache hints
   comlink        Typed postMessage protocol: Studio ↔ iframe
   visual-editing DOM overlay scanner + click-to-edit runtime
-  schema         Example content schema — post, author, siteSettings
+  schema         Example content schema — post, author, siteSettings, page (with slices)
                  Declares `routes` (URL → doc) and `locations` (doc → URL)
   next           Framework integration: defineCms() returns draft client,
                  sanityFetch, route handlers, VisualEditingBridge, staticParamsFor
+  typegen        CLI + emitters: schema → TS interfaces, typed GROQ result
+                 inference via `defineQuery<T>(query)`
 ```
 
 ## Quick start
@@ -185,39 +187,70 @@ Maps 1:1 to [Sanity's seven-layer stack](https://www.sanity.io/docs/visual-editi
 
 ## The GROQ subset
 
-Currently supported:
+Parsed with a real tokenizer + recursive-descent parser (`packages/core/src/query.ts`).
+
+Supported:
 
 - `*[_type == "post"]` — filter by type
-- `*[_type == "post" && slug.current == $slug]` — `&&`-chained equality
-- `[0]` — single-item indexing
-- `{field, "alias": path, nested{...}, ref->{...}}` — projection with deref
+- `*[_type == "post" && (title == "A" || views > 10)]` — boolean expressions with `&&`, `||`, parens
+- Operators: `==`, `!=`, `<`, `<=`, `>`, `>=`, `match` (case-insensitive wildcard with `*`)
+- `| order(field asc|desc, ...)` — multi-key ordering
+- `[0]` — single item (returns `T | null`)
+- `[a..b]` — inclusive slice
+- `[a...b]` — exclusive slice
+- `count(*[...])` — counting function
+- Projections: `{ field, "alias": path, nested{...}, ref->{...} }`
+- Reference dereferencing with inner projections
+- Parameters: `$slug`, etc.
+- Content Source Maps emitted for every traceable string
 
-Not yet (see roadmap below): `order(...)`, slicing (`[0..n]`), `count()`,
-`||` (OR), comparison operators, inline subqueries, `match`.
-
-The parser + executor are in `packages/core/src/query.ts`. It's a
-recursive-descent projection parser plus a runtime walker that emits Content
-Source Maps inline. See the "What is GROQ" section of the commit history
-for why GROQ beats GraphQL or JSONPath for content work.
+Not yet: inline subqueries, array-element filters, `defined()`, `coalesce()`,
+arithmetic. See the roadmap.
 
 ## Roadmap
 
-Order roughly by leverage-to-effort ratio:
+Order roughly by leverage-to-effort ratio. Shipped items first.
 
-- [ ] **Typegen** — CLI that emits TS types from the schema + typed `client.fetch<PostList>(...)`
-- [ ] **Portable Text / rich text** — block content type, Studio editor, renderer
-- [ ] **References picker in Studio** — replace the text input with a combobox
-- [ ] **Image / asset uploads** — upload endpoint, CDN transforms, Studio picker
-- [ ] **GROQ**: `order`, `[a..b]`, `count()`, `||`, `<`/`>`/`!=`, `match`, subqueries
-- [ ] **Validation** — `required`, `max`, `min`, `pattern` in schema
-- [ ] **Document history / versions** — snapshot on every write, revert UI
-- [ ] **Real-time collaboration** — CRDT for multi-author editing
-- [ ] **Auth** — users, roles, per-dataset permissions
-- [ ] **Releases / scheduled publishing** — stacked perspectives
-- [ ] **Generic outbound webhooks** — anything beyond revalidation
-- [ ] **Studio plugins** — custom inputs, desk structures, actions
-- [ ] **Proper GROQ parser** — replace the regex-driven one with a peggy grammar
-- [ ] **CDN layer** — make `useCdn: true` actually cache
+**Shipped**
+
+- [x] Schema-first content modeling with `routes` + `locations` (single source of truth)
+- [x] Stega encoding + Content Source Maps for click-to-edit visual editing
+- [x] Studio with unified 4-column layout (types / docs / editor / live preview)
+- [x] Two-way binding: doc selection ↔ iframe URL
+- [x] SSG + ISR on-demand revalidation via `/api/revalidate` webhook
+- [x] Draft-mode-aware `sanityFetch` with cache tags, drafts fallback for new slugs
+- [x] `defineCms()` one-call Next.js integration (`@repo/next`)
+- [x] **GROQ**: `order(...)`, `[a..b]`/`[a...b]` slicing, `count()`, `||` + parens,
+      `<` `<=` `>` `>=` `!=`, `match` (case-insensitive wildcard)
+- [x] **Typegen** (`@repo/typegen`): schema → TS interfaces, typed queries via
+      `defineQuery<T>`, CLI at `sanity-clone-typegen`
+- [x] **References picker** in Studio: search combobox with type filtering
+- [x] **Validation**: `required`/`min`/`max`/`pattern`/`oneOf` on field defs, shown
+      inline in Studio, enforced at the API on publish (422 with issue list)
+- [x] **Portable Text**: rich-text blockContent field, contenteditable Studio
+      editor with style selector + Cmd+B/I mark toggles, demo renderer
+- [x] **Array editor** in Studio: add/reorder/delete items with nested sub-forms
+- [x] **Slices / page builder**: inline object types, `defineInlineType()`,
+      discriminated `array.of` with per-type add menus
+- [x] Unit + API integration test suite — 75+ tests covering stega, GROQ,
+      typegen, validation, the API HTTP surface
+
+**Next up**
+
+- [ ] Page-builder renderer on the demo: `<PageBuilder slices={...} />` with a
+      component registry and a concrete `/:slug` route showcasing hero + feature
+      grid + CTA slices
+- [ ] Image / asset uploads — upload endpoint, CDN transforms, Studio picker
+- [ ] Document history / versions — snapshot on every write, revert + diff UI
+- [ ] Real-time collaboration — CRDT-based presence + concurrent editing
+- [ ] Auth — users, roles, per-dataset permissions
+- [ ] Releases / scheduled publishing — stacked perspectives
+- [ ] Generic outbound webhooks — anything beyond revalidation
+- [ ] Studio plugins — custom inputs, desk structures, actions
+- [ ] GraphQL codegen alongside GROQ
+- [ ] Proper GROQ parser via peggy grammar (replace hand-rolled recursive descent
+      for subqueries, arithmetic, `defined()`, `coalesce()`, etc.)
+- [ ] CDN layer — make `useCdn: true` actually cache
 
 ## Why this exists
 
