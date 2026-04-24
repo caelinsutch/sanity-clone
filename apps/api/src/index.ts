@@ -15,6 +15,9 @@ import { cors } from "hono/cors"
 import type { Perspective, SanityDocument } from "@repo/core"
 import { draftId, isDraftId, publishedId } from "@repo/core"
 import { executeQuery } from "@repo/core/query"
+import { getTypeDef } from "@repo/core/schema"
+import { validateDocument } from "@repo/core/validate"
+import { schema } from "@repo/schema"
 import { applyMutations } from "./mutate.js"
 import {
   currentSeq,
@@ -241,6 +244,17 @@ app.post("/v1/data/publish/:dataset/:id", async (c) => {
   const { dataset, id } = c.req.param()
   const draft = await getDoc(c.env, dataset, draftId(id))
   if (!draft) return c.json({ error: "No draft to publish" }, 404)
+
+  // Run validation against the schema before publishing.
+  const typeDef = getTypeDef(schema, draft._type)
+  if (typeDef) {
+    const issues = validateDocument(typeDef, draft as Record<string, unknown>)
+    const errors = issues.filter((i) => i.level === "error")
+    if (errors.length > 0) {
+      return c.json({ error: "validation", issues: errors }, 422)
+    }
+  }
+
   const published: SanityDocument = {
     ...draft,
     _id: publishedId(id),

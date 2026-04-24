@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { FieldDef } from "@repo/core/schema"
 import { getTypeDef } from "@repo/core/schema"
+import { validateDocument, type ValidationIssue } from "@repo/core/validate"
 import { draftId, isDraftId, publishedId, type SanityDocument } from "@repo/core"
 import { schema } from "@repo/schema"
 import { studioClient } from "@/lib/client"
@@ -152,6 +153,18 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
 
   const hasDraft = isDraftId(doc._id) && !!doc._createdAt
 
+  // Compute validation issues for the current doc state. The Publish button
+  // is disabled if there are any errors.
+  const issues = typeDef
+    ? validateDocument(typeDef, doc as unknown as Record<string, unknown>)
+    : []
+  const errorIssues = issues.filter((i) => i.level === "error")
+  const issuesByPath: Record<string, ValidationIssue[]> = {}
+  for (const i of issues) {
+    ;(issuesByPath[i.path] ??= []).push(i)
+  }
+  const hasErrors = errorIssues.length > 0
+
   return (
     <div style={{ overflowY: "auto", padding: "24px 32px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -169,14 +182,53 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
           <button className="btn danger" onClick={deleteAll}>
             Delete
           </button>
-          <button className="btn" onClick={publish}>
+          <button
+            className="btn"
+            onClick={publish}
+            disabled={hasErrors}
+            title={hasErrors ? `${errorIssues.length} validation error(s)` : "Publish this draft"}
+            style={
+              hasErrors
+                ? { opacity: 0.5, cursor: "not-allowed" }
+                : undefined
+            }
+          >
             Publish
           </button>
         </div>
       </div>
+      {hasErrors ? (
+        <div
+          style={{
+            background: "rgba(240, 82, 82, 0.1)",
+            border: "1px solid var(--danger)",
+            color: "var(--danger)",
+            padding: "10px 14px",
+            borderRadius: 6,
+            marginBottom: 20,
+            fontSize: 13,
+          }}
+        >
+          <strong>{errorIssues.length} issue(s) block publishing:</strong>
+          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+            {errorIssues.map((i, idx) => (
+              <li key={idx}>
+                <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{i.path}</code>: {i.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div>
         {typeDef.fields.map((f) => (
-          <FieldRenderer key={f.name} field={f} value={(doc as Record<string, unknown>)[f.name]} path={f.name} onChange={updatePath} />
+          <FieldRenderer
+            key={f.name}
+            field={f}
+            value={(doc as Record<string, unknown>)[f.name]}
+            path={f.name}
+            onChange={updatePath}
+            issues={issuesByPath[f.name] ?? []}
+          />
         ))}
       </div>
     </div>
@@ -211,26 +263,50 @@ function FieldRenderer({
   value,
   path,
   onChange,
+  issues = [],
 }: {
   field: FieldDef
   value: unknown
   path: string
   onChange: (path: string, value: unknown) => void
+  issues?: ValidationIssue[]
 }) {
   if (field.hidden) return null
 
   const label = (
-    <div className="field-label">{field.title}</div>
+    <div className="field-label">
+      {field.title}
+      {field.validation?.required ? (
+        <span style={{ color: "var(--danger)", marginLeft: 4 }}>*</span>
+      ) : null}
+    </div>
   )
   const description = field.description ? (
     <div className="field-description">{field.description}</div>
   ) : null
+  const errors = issues.filter((i) => i.level === "error")
+  const errorBlock =
+    errors.length > 0 ? (
+      <div
+        style={{
+          color: "var(--danger)",
+          fontSize: 12,
+          marginTop: 4,
+          lineHeight: 1.4,
+        }}
+      >
+        {errors.map((e, i) => (
+          <div key={i}>{e.message}</div>
+        ))}
+      </div>
+    ) : null
 
   const wrap = (children: React.ReactNode) => (
     <div className="field" data-field-path={path}>
       {label}
       {description}
       {children}
+      {errorBlock}
     </div>
   )
 

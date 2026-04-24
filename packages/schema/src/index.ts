@@ -13,8 +13,18 @@ export const siteSettings = defineType({
   title: "Site Settings",
   type: "document",
   fields: [
-    defineField({ name: "title", title: "Site title", type: "string" }),
-    defineField({ name: "tagline", title: "Tagline", type: "string" }),
+    defineField({
+      name: "title",
+      title: "Site title",
+      type: "string",
+      validation: { required: true, min: 1, max: 60 },
+    }),
+    defineField({
+      name: "tagline",
+      title: "Tagline",
+      type: "string",
+      validation: { max: 100 },
+    }),
     defineField({ name: "description", title: "Description", type: "text" }),
   ],
   preview: { select: { title: "title", subtitle: "tagline" } },
@@ -26,11 +36,15 @@ export const author = defineType({
   title: "Author",
   type: "document",
   fields: [
-    defineField({ name: "name", title: "Name", type: "string" }),
-    defineField({ name: "bio", title: "Bio", type: "text" }),
+    defineField({
+      name: "name",
+      title: "Name",
+      type: "string",
+      validation: { required: true, min: 2, max: 80 },
+    }),
+    defineField({ name: "bio", title: "Bio", type: "text", validation: { max: 500 } }),
   ],
   preview: { select: { title: "name", subtitle: "bio" } },
-  // Authors don't have their own page in this demo.
   locations: () => [],
 })
 
@@ -39,11 +53,44 @@ export const post = defineType({
   title: "Post",
   type: "document",
   fields: [
-    defineField({ name: "title", title: "Title", type: "string" }),
-    defineField({ name: "slug", title: "Slug", type: "slug", source: "title" }),
-    defineField({ name: "excerpt", title: "Excerpt", type: "text", rows: 2 }),
-    defineField({ name: "body", title: "Body", type: "text", rows: 10 }),
-    defineField({ name: "author", title: "Author", type: "reference", to: ["author"] }),
+    defineField({
+      name: "title",
+      title: "Title",
+      type: "string",
+      validation: { required: true, min: 3, max: 80 },
+    }),
+    defineField({
+      name: "slug",
+      title: "Slug",
+      type: "slug",
+      source: "title",
+      validation: {
+        required: true,
+        pattern: "^[a-z0-9-]+$",
+        message: "Slug must contain only lowercase letters, numbers, and hyphens",
+      },
+    }),
+    defineField({
+      name: "excerpt",
+      title: "Excerpt",
+      type: "text",
+      rows: 2,
+      validation: { max: 200 },
+    }),
+    defineField({
+      name: "body",
+      title: "Body",
+      type: "text",
+      rows: 10,
+      validation: { required: true, min: 10 },
+    }),
+    defineField({
+      name: "author",
+      title: "Author",
+      type: "reference",
+      to: ["author"],
+      validation: { required: true },
+    }),
   ],
   preview: { select: { title: "title", subtitle: "excerpt" } },
   locations: (doc) => {

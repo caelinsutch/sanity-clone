@@ -328,6 +328,8 @@ describe("perspectives + publish flow", () => {
                 _type: "post",
                 title: "About to publish",
                 slug: { current: "hello" },
+                body: "Body content long enough for validation.",
+                author: { _type: "reference", _ref: "author-jane" },
               },
             },
           ],
@@ -352,6 +354,108 @@ describe("perspectives + publish flow", () => {
     const pub = await app.fetch(new Request("http://api/v1/data/doc/test/post-hello"), env)
     const pubBody = (await pub.json()) as { documents: SanityDocument[] }
     expect(pubBody.documents[0]?.title).toBe("About to publish")
+  })
+})
+
+describe("validation on publish", () => {
+  let env: Env
+  beforeEach(() => {
+    env = makeEnv()
+  })
+
+  test("publish rejects an invalid draft with 422", async () => {
+    // Seed only the site settings + author (so references resolve)
+    await app.fetch(
+      new Request("http://api/v1/data/seed/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({
+          documents: [
+            {
+              _id: "author-jane",
+              _type: "author",
+              name: "Jane",
+            },
+          ],
+        }),
+      }),
+      env,
+    )
+
+    // Create a draft post that's missing required fields (no title, no body, no slug)
+    await app.fetch(
+      new Request("http://api/v1/data/mutate/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mutations: [
+            {
+              createOrReplace: {
+                _id: "drafts.post-bad",
+                _type: "post",
+                // no title, no body, no slug
+              },
+            },
+          ],
+        }),
+      }),
+      env,
+    )
+
+    const res = await app.fetch(
+      new Request("http://api/v1/data/publish/test/post-bad", { method: "POST" }),
+      env,
+    )
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { error: string; issues: { path: string }[] }
+    expect(body.error).toBe("validation")
+    const paths = body.issues.map((i) => i.path).sort()
+    // title, slug, body, and author are all required
+    expect(paths).toContain("title")
+    expect(paths).toContain("slug")
+    expect(paths).toContain("body")
+    expect(paths).toContain("author")
+  })
+
+  test("publish accepts a valid draft", async () => {
+    await app.fetch(
+      new Request("http://api/v1/data/seed/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({
+          documents: [{ _id: "author-jane", _type: "author", name: "Jane" }],
+        }),
+      }),
+      env,
+    )
+
+    await app.fetch(
+      new Request("http://api/v1/data/mutate/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mutations: [
+            {
+              createOrReplace: {
+                _id: "drafts.post-good",
+                _type: "post",
+                title: "Valid Post",
+                slug: { current: "valid-post" },
+                body: "Long enough body content.",
+                author: { _type: "reference", _ref: "author-jane" },
+              },
+            },
+          ],
+        }),
+      }),
+      env,
+    )
+
+    const res = await app.fetch(
+      new Request("http://api/v1/data/publish/test/post-good", { method: "POST" }),
+      env,
+    )
+    expect(res.status).toBe(200)
   })
 })
 

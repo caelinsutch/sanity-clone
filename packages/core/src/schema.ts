@@ -35,6 +35,26 @@ export interface BaseField {
   description?: string
   readOnly?: boolean
   hidden?: boolean
+  /**
+   * Declarative validation. Evaluated by both the Studio (for inline
+   * errors + Publish gating) and the API (to reject invalid mutations).
+   */
+  validation?: FieldValidation
+}
+
+export interface FieldValidation {
+  /** Value must be present (non-null, non-empty-string, non-empty-array). */
+  required?: boolean
+  /** Minimum length (string/text/array) or minimum value (number). */
+  min?: number
+  /** Maximum length (string/text/array) or maximum value (number). */
+  max?: number
+  /** Regex pattern the string must match. Serialize as string (flags supported). */
+  pattern?: string
+  /** For string/text: enum of allowed values. */
+  oneOf?: (string | number)[]
+  /** Custom message override. If absent a sensible default is used. */
+  message?: string
 }
 
 export interface StringField extends BaseField {
