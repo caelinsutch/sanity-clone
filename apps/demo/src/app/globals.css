@@ -33,7 +33,19 @@ ul.posts li { border-bottom: 1px solid #eee6d5; padding: 16px 0; }
 ul.posts a { color: inherit; text-decoration: none; }
 ul.posts h2 { margin: 0 0 6px; font-size: 20px; }
 ul.posts p { margin: 0; color: #6b6558; }
-.post-body { font-size: 18px; white-space: pre-wrap; }
+.post-body { font-size: 18px; }
+.post-body h2 { font-size: 24px; margin: 1.5em 0 0.5em; }
+.post-body h3 { font-size: 20px; margin: 1.3em 0 0.4em; }
+.post-body p { margin: 0.8em 0; }
+.post-body blockquote {
+  margin: 1.2em 0;
+  padding-left: 16px;
+  border-left: 3px solid #c4bca6;
+  color: #6b6558;
+  font-style: italic;
+}
+.post-body strong { font-weight: 600; }
+.post-body em { font-style: italic; }
 .meta { color: #8c8577; font-size: 13px; }
 a { color: #2d7df6; }
 .preview-banner {

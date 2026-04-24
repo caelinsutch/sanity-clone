@@ -10,6 +10,21 @@ export interface SanityCloneDocument<T extends string = string> {
   _updatedAt: string
 }
 
+/** Portable Text block (rich text content). */
+export interface PortableTextSpan {
+  _type: "span"
+  _key: string
+  text: string
+  marks?: string[]
+}
+export interface PortableTextBlock {
+  _type: "block"
+  _key: string
+  style: "normal" | "h1" | "h2" | "h3" | "h4" | "blockquote"
+  children: PortableTextSpan[]
+  markDefs?: { _key: string; _type: string; [key: string]: unknown }[]
+}
+
 /** Site Settings */
 export interface SiteSettings extends SanityCloneDocument<"siteSettings"> {
   title?: string
@@ -28,7 +43,7 @@ export interface Post extends SanityCloneDocument<"post"> {
   title?: string
   slug?: { _type?: "slug"; current: string }
   excerpt?: string
-  body?: string
+  body?: PortableTextBlock[]
   author?: { _type: "reference"; _ref: DocumentByType["author"]["_id"] }
 }
 
@@ -45,7 +60,7 @@ export type DocumentByType = {
 
 // --- Query result types -------------------------------------------------
 
-export type PostBySlugQueryResult = { _id: string; title: string; body: string; author: Pick<Author, "name"> | null } | null
+export type PostBySlugQueryResult = { _id: string; title: string; body: unknown; author: Pick<Author, "name"> | null } | null
 export type PostCountQueryResult = number
 export type PostListQueryResult = { _id: string; title: string; excerpt: string; slug: string }[]
 export type PostSlugsQueryResult = { slug: string }[]

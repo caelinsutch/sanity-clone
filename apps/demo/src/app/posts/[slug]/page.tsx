@@ -3,6 +3,8 @@ import Link from "next/link"
 import { sanityFetch, staticParamsFor } from "@/lib/client"
 import { postBySlugQuery } from "@/lib/queries"
 import type { PostBySlugQueryResult } from "@/generated"
+import { PortableText } from "@/components/PortableText"
+import type { PortableTextBlock } from "@repo/core/schema"
 
 /**
  * Schema-driven: enumerates all posts at build time by reading the schema's
@@ -26,7 +28,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       </p>
       <h1>{post.title}</h1>
       {post.author ? <p className="meta">by {post.author.name}</p> : null}
-      <div className="post-body">{post.body}</div>
+      <div className="post-body">
+        <PortableText blocks={post.body as unknown as PortableTextBlock[]} />
+      </div>
     </main>
   )
 }

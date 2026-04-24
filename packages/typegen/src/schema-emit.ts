@@ -43,6 +43,24 @@ export function emitSchemaTypes(schema: Schema, options: EmitOptions = {}): stri
   )
   lines.push("")
 
+  lines.push(`/** Portable Text block (rich text content). */`)
+  lines.push(
+    `export interface PortableTextSpan {\n` +
+      `  _type: "span"\n` +
+      `  _key: string\n` +
+      `  text: string\n` +
+      `  marks?: string[]\n` +
+      `}\n` +
+      `export interface PortableTextBlock {\n` +
+      `  _type: "block"\n` +
+      `  _key: string\n` +
+      `  style: "normal" | "h1" | "h2" | "h3" | "h4" | "blockquote"\n` +
+      `  children: PortableTextSpan[]\n` +
+      `  markDefs?: { _key: string; _type: string; [key: string]: unknown }[]\n` +
+      `}`,
+  )
+  lines.push("")
+
   for (const type of schema.types) {
     lines.push(`/** ${type.title} */`)
     lines.push(
@@ -95,9 +113,6 @@ function fieldType(field: FieldDef, schema: Schema): string {
       return `{ _type?: "image"; url?: string; asset?: { _ref: string } }`
     case "reference": {
       const allowed = field.to
-      // The stored shape is a reference object. When dereferenced in GROQ,
-      // it'll expand to one of the allowed document types — we capture that
-      // in query-type inference, not here.
       const refUnion = allowed
         .map((t) => `DocumentByType["${t}"]["_id"]`)
         .join(" | ")
@@ -114,6 +129,8 @@ function fieldType(field: FieldDef, schema: Schema): string {
         .join("; ")
       return `{ ${inner} }`
     }
+    case "blockContent":
+      return "PortableTextBlock[]"
     default:
       return "unknown"
   }

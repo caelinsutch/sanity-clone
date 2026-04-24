@@ -28,6 +28,7 @@ export type FieldType =
   | "reference"
   | "array"
   | "object"
+  | "blockContent"
 
 export interface BaseField {
   name: string
@@ -93,6 +94,39 @@ export interface ObjectField extends BaseField {
   fields: FieldDef[]
 }
 
+export interface BlockContentField extends BaseField {
+  type: "blockContent"
+  /** Which block styles to allow in the editor. Defaults to h2, h3, p, blockquote. */
+  styles?: BlockStyle[]
+}
+
+export type BlockStyle = "normal" | "h1" | "h2" | "h3" | "h4" | "blockquote"
+
+/**
+ * Shape of a stored block in an array field of type `blockContent`.
+ *   { _type: "block", _key, style, children: [span...], markDefs: [] }
+ * Spans:
+ *   { _type: "span", _key, text, marks: string[] }
+ */
+export interface PortableTextBlock {
+  _type: "block"
+  _key: string
+  style: BlockStyle
+  children: PortableTextSpan[]
+  markDefs?: PortableTextMarkDef[]
+}
+export interface PortableTextSpan {
+  _type: "span"
+  _key: string
+  text: string
+  marks?: string[]
+}
+export interface PortableTextMarkDef {
+  _key: string
+  _type: string
+  [key: string]: unknown
+}
+
 export type FieldDef =
   | StringField
   | TextField
@@ -104,6 +138,7 @@ export type FieldDef =
   | ReferenceField
   | ArrayField
   | ObjectField
+  | BlockContentField
 
 export interface DocumentLocation {
   /** Human-readable title, shown in the Studio's "Used on" list. */

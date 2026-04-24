@@ -8,6 +8,7 @@ import { draftId, isDraftId, publishedId, type SanityDocument } from "@repo/core
 import { schema } from "@repo/schema"
 import { studioClient } from "@/lib/client"
 import { ReferencePicker } from "./ReferencePicker"
+import { BlockContentEditor } from "./BlockContentEditor"
 
 interface Props {
   type: string
@@ -370,6 +371,16 @@ function FieldRenderer({
         allowedTypes={field.to}
         onChange={(next) => onChange(path, next)}
         readOnly={field.readOnly}
+      />,
+    )
+  }
+  if (field.type === "blockContent") {
+    const styles = field.styles ?? ["normal", "h2", "h3", "blockquote"]
+    return wrap(
+      <BlockContentEditor
+        value={value as import("@repo/core/schema").PortableTextBlock[] | undefined | null}
+        allowedStyles={styles}
+        onChange={(next) => onChange(path, next)}
       />,
     )
   }

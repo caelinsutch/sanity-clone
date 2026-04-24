@@ -80,9 +80,9 @@ export const post = defineType({
     defineField({
       name: "body",
       title: "Body",
-      type: "text",
-      rows: 10,
-      validation: { required: true, min: 10 },
+      type: "blockContent",
+      validation: { required: true, min: 1 },
+      styles: ["normal", "h2", "h3", "blockquote"],
     }),
     defineField({
       name: "author",
@@ -143,8 +143,42 @@ export const seedData = [
     title: "Hello, World",
     slug: { current: "hello-world" },
     excerpt: "A short introduction to the blog.",
-    body:
-      "This is the very first post on the blog. It exists to demonstrate that the content pipeline works end to end.",
+    body: [
+      {
+        _type: "block",
+        _key: "b1",
+        style: "h2",
+        children: [{ _type: "span", _key: "s1", text: "A fresh start", marks: [] }],
+      },
+      {
+        _type: "block",
+        _key: "b2",
+        style: "normal",
+        children: [
+          {
+            _type: "span",
+            _key: "s2",
+            text: "This is the very first post on the blog. It exists to demonstrate that the content pipeline works end to end — ",
+            marks: [],
+          },
+          {
+            _type: "span",
+            _key: "s3",
+            text: "from schema to render",
+            marks: ["strong"],
+          },
+          { _type: "span", _key: "s4", text: ".", marks: [] },
+        ],
+      },
+      {
+        _type: "block",
+        _key: "b3",
+        style: "blockquote",
+        children: [
+          { _type: "span", _key: "s5", text: "Content-as-data is a good idea.", marks: [] },
+        ],
+      },
+    ],
     author: { _type: "reference", _ref: "author-jane" },
   },
   {
@@ -153,8 +187,21 @@ export const seedData = [
     title: "Click to edit",
     slug: { current: "click-to-edit" },
     excerpt: "How visual editing bridges the studio and the live site.",
-    body:
-      "With stega encoding, every string rendered on the page carries an invisible signature pointing back to the document and field it came from. Click it, and the studio opens right at that field.",
+    body: [
+      {
+        _type: "block",
+        _key: "b1",
+        style: "normal",
+        children: [
+          {
+            _type: "span",
+            _key: "s1",
+            text: "With stega encoding, every string rendered on the page carries an invisible signature pointing back to the document and field it came from. Click it, and the studio opens right at that field.",
+            marks: [],
+          },
+        ],
+      },
+    ],
     author: { _type: "reference", _ref: "author-jane" },
   },
 ]

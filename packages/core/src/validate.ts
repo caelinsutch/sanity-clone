@@ -131,7 +131,7 @@ function isEmpty(field: FieldDef, value: unknown): boolean {
   if (field.type === "reference") {
     return !(value as { _ref?: string } | undefined)?._ref
   }
-  if (field.type === "array") {
+  if (field.type === "array" || field.type === "blockContent") {
     return !Array.isArray(value) || value.length === 0
   }
   return false
@@ -142,7 +142,9 @@ function sizeOf(field: FieldDef, value: unknown): number | null {
   if (field.type === "string" || field.type === "text" || field.type === "url") {
     return typeof value === "string" ? value.length : null
   }
-  if (field.type === "array") return Array.isArray(value) ? value.length : null
+  if (field.type === "array" || field.type === "blockContent") {
+    return Array.isArray(value) ? value.length : null
+  }
   if (field.type === "slug") {
     const c = (value as { current?: string } | undefined)?.current
     return typeof c === "string" ? c.length : null
