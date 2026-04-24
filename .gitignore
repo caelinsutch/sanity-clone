@@ -1,0 +1,9 @@
+node_modules
+.turbo
+dist
+.next
+.wrangler
+.env*.local
+.env
+*.log
+.DS_Store

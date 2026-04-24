@@ -1,0 +1,19 @@
+{
+  "name": "@repo/schema",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/core": "*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

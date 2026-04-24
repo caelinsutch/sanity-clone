@@ -1,0 +1,15 @@
+{
+  "name": "sanity-clone-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    { "binding": "CONTENT", "id": "content", "preview_id": "content" }
+  ],
+  "vars": {
+    "ADMIN_TOKEN": "dev-admin-token",
+    "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:3333",
+    "REVALIDATE_WEBHOOKS": "http://localhost:3000/api/revalidate",
+    "REVALIDATE_SECRET": "dev-revalidate-secret"
+  }
+}
