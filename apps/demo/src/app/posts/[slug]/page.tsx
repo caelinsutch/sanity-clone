@@ -1,13 +1,8 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { sanityFetch, staticParamsFor } from "@/lib/client"
-
-interface Post {
-  _id: string
-  title: string
-  body: string
-  author: { name: string } | null
-}
+import { postBySlugQuery } from "@/lib/queries"
+import type { PostBySlugQueryResult } from "@/generated"
 
 /**
  * Schema-driven: enumerates all posts at build time by reading the schema's
@@ -18,8 +13,8 @@ export const generateStaticParams = staticParamsFor("post")
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const post = await sanityFetch<Post | null>(
-    '*[_type == "post" && slug.current == $slug][0]{_id, title, body, "author": author->{name}}',
+  const post = await sanityFetch<PostBySlugQueryResult>(
+    postBySlugQuery.query,
     { slug },
     { tags: [`post:${slug}`] },
   )

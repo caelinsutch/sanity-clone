@@ -1,18 +1,8 @@
 import Link from "next/link"
 import { sanityFetch } from "@/lib/client"
 import { stegaClean } from "@repo/client/stega"
-
-interface SiteSettings {
-  title: string
-  tagline: string
-}
-
-interface PostSummary {
-  _id: string
-  title: string
-  excerpt: string
-  slug: string
-}
+import { siteSettingsQuery, postListQuery } from "@/lib/queries"
+import type { SiteSettingsQueryResult, PostListQueryResult } from "@/generated"
 
 /**
  * SSG home page. Cached with the "sanity" tag so mutations in the CMS
@@ -22,10 +12,8 @@ interface PostSummary {
  */
 export default async function Home() {
   const [settings, posts] = await Promise.all([
-    sanityFetch<SiteSettings | null>('*[_type == "siteSettings"][0]{title, tagline}'),
-    sanityFetch<PostSummary[]>(
-      '*[_type == "post"]{ _id, title, excerpt, "slug": slug.current }',
-    ),
+    sanityFetch<SiteSettingsQueryResult>(siteSettingsQuery.query),
+    sanityFetch<PostListQueryResult>(postListQuery.query),
   ])
   return (
     <>

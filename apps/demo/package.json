@@ -7,13 +7,15 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typegen": "bun run ../../packages/typegen/src/cli.ts --schema ../../packages/schema/src/index.ts --queries src/lib/queries.ts --out src/generated.ts"
   },
   "dependencies": {
     "@repo/client": "*",
     "@repo/core": "*",
     "@repo/next": "*",
     "@repo/schema": "*",
+    "@repo/typegen": "*",
     "@repo/visual-editing": "*",
     "next": "^16.2.4",
     "react": "^19.2.5",
