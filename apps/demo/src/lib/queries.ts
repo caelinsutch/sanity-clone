@@ -12,9 +12,13 @@ export const siteSettingsQuery = defineQuery(
   '*[_type == "siteSettings"][0]{title, tagline}',
 )
 
+/** All posts, newest first. */
 export const postListQuery = defineQuery(
-  '*[_type == "post"]{ _id, title, excerpt, "slug": slug.current }',
+  '*[_type == "post"] | order(_updatedAt desc){ _id, title, excerpt, "slug": slug.current }',
 )
+
+/** Just the total number of posts. */
+export const postCountQuery = defineQuery('count(*[_type == "post"])')
 
 export const postBySlugQuery = defineQuery(
   '*[_type == "post" && slug.current == $slug][0]{_id, title, body, "author": author->{name}}',

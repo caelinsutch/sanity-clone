@@ -46,6 +46,7 @@ export type DocumentByType = {
 // --- Query result types -------------------------------------------------
 
 export type PostBySlugQueryResult = { _id: string; title: string; body: string; author: Pick<Author, "name"> | null } | null
+export type PostCountQueryResult = number
 export type PostListQueryResult = { _id: string; title: string; excerpt: string; slug: string }[]
 export type PostSlugsQueryResult = { slug: string }[]
 export type SiteSettingsQueryResult = Pick<SiteSettings, "title" | "tagline"> | null
