@@ -6,6 +6,7 @@ import { getTypeDef } from "@repo/core/schema"
 import { draftId, isDraftId, publishedId, type SanityDocument } from "@repo/core"
 import { schema } from "@repo/schema"
 import { studioClient } from "@/lib/client"
+import { ReferencePicker } from "./ReferencePicker"
 
 interface Props {
   type: string
@@ -287,12 +288,12 @@ function FieldRenderer({
     )
   }
   if (field.type === "reference") {
-    const ref = ((value as { _ref?: string })?._ref) ?? ""
     return wrap(
-      <input
-        value={ref}
-        placeholder={`id of ${field.to.join(" or ")}`}
-        onChange={(e) => onChange(path, { _type: "reference", _ref: e.target.value })}
+      <ReferencePicker
+        value={value as { _type?: string; _ref?: string } | null | undefined}
+        allowedTypes={field.to}
+        onChange={(next) => onChange(path, next)}
+        readOnly={field.readOnly}
       />,
     )
   }
