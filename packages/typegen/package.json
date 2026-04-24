@@ -11,7 +11,7 @@
     ".": "./src/index.ts",
     "./cli": "./src/cli.ts"
   },
-  "scripts": { "typecheck": "tsc --noEmit" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "bun test" },
   "dependencies": {
     "@repo/core": "*"
   },

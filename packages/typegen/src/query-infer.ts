@@ -84,9 +84,14 @@ function projectDocumentType(
 ): string {
   if (!projection) return pascal(type.name)
 
-  // Simple case: all items are `{ kind: "field" }` → Pick
-  const allBareFields = projection.items.every((i) => i.kind === "field")
-  if (allBareFields) {
+  // Simple case: all items are bare fields that exist on the type (or are
+  // builtins) → Pick<T, ...>.
+  const allBareKnownFields = projection.items.every((i) => {
+    if (i.kind !== "field") return false
+    if (BUILTIN_FIELDS[i.name]) return true
+    return type.fields.some((f) => f.name === i.name)
+  })
+  if (allBareKnownFields) {
     const keys = projection.items.map((i) => `"${(i as { name: string }).name}"`).join(" | ")
     return `Pick<${pascal(type.name)}, ${keys}>`
   }

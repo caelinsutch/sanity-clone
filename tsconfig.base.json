@@ -15,6 +15,7 @@
     "jsx": "preserve",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["bun"]
   }
 }

@@ -11,7 +11,8 @@
     "./csm": "./src/csm.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
