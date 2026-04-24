@@ -1,22 +1,32 @@
 /**
- * A tiny GROQ-lite query engine.
+ * A small GROQ implementation.
  *
- * Real GROQ is a full language — we implement a small pragmatic subset that
- * covers typical CMS needs while producing the same shape of results Sanity's
- * HTTP API returns (including Content Source Maps).
+ * Implements a pragmatic subset of Sanity's GROQ query language, enough for
+ * content work (filtering, ordering, slicing, projection, dereferencing).
  *
- * Supported:
- *   - `*[_type == "post"]`                             — filter by type
- *   - `*[_type == "post" && slug.current == $slug]`    — filter on dotted path
- *   - `*[_type == "post"][0]`                          — single-item indexing
- *   - `{title, body, "slug": slug.current}`            — projection (rename + path)
- *   - `{author->{name}}`                               — reference dereferencing
- *   - `{author->{name, "id": _id}}`                    — deref + inner projection
- *   - Nested projections on object fields             — `{seo{title}}`
+ * Grammar (roughly):
  *
- * The implementation is not a full parser. It's a scan + recursive-descent
- * projection parser just expressive enough to drive the demo and visual
- * editing overlays end to end.
+ *   query       := ( count "(" source ")" ) | ( source pipeline projection? )
+ *   source      := "*" ( "[" filter "]" )?
+ *   pipeline    := ( "|" "order" "(" orderKeys ")" )?
+ *                  ( "[" index "]" )?
+ *   index       := NUM | NUM ".." NUM | NUM "..." NUM
+ *   filter      := orExpr
+ *   orExpr      := andExpr ( "||" andExpr )*
+ *   andExpr     := cmpExpr ( "&&" cmpExpr )*
+ *   cmpExpr     := value ( op value )? | "(" orExpr ")"
+ *   op          := "==" | "!=" | "<" | "<=" | ">" | ">=" | "match"
+ *   value       := PATH | STRING | NUM | BOOL | "null" | "$" IDENT
+ *   projection  := "{" projectionItems "}"
+ *   projectionItems := item ( "," item )*
+ *   item        := IDENT                       // bare field
+ *                | "\"" ALIAS "\"" ":" rhs     // rename
+ *                | IDENT "->" projection?      // deref
+ *                | IDENT projection            // inline sub-object
+ *   rhs         := PATH | IDENT "->" projection?
+ *
+ * Not yet: subqueries in projections, array-element filters, `defined()`,
+ * `coalesce()`, arithmetic, etc.
  */
 
 import type { SanityDocument } from "./index"
@@ -31,210 +41,501 @@ export interface QueryResult<T = unknown> {
 type Scalar = string | number | boolean | null
 type Value = Scalar | Value[] | { [k: string]: Value }
 
-type FilterExpr =
-  | { kind: "eq"; path: string[]; value: Scalar | { param: string } }
-  | { kind: "and"; left: FilterExpr; right: FilterExpr }
+// --- AST -------------------------------------------------------------------
 
-/** A projection is a tree of selected fields. */
-interface Projection {
+export type FilterExpr =
+  | { kind: "cmp"; op: CmpOp; left: Operand; right: Operand }
+  | { kind: "and"; left: FilterExpr; right: FilterExpr }
+  | { kind: "or"; left: FilterExpr; right: FilterExpr }
+
+export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=" | "match"
+
+export type Operand =
+  | { kind: "path"; path: string[] }
+  | { kind: "literal"; value: Scalar }
+  | { kind: "param"; name: string }
+
+export interface OrderKey {
+  path: string[]
+  dir: "asc" | "desc"
+}
+
+export interface Projection {
   items: ProjectionItem[]
 }
 
-type ProjectionItem =
+export type ProjectionItem =
   | { kind: "field"; name: string }
   | { kind: "rename"; alias: string; path: string[] }
   | { kind: "subObject"; name: string; projection: Projection }
-  | {
-      kind: "deref"
-      name: string
-      /** Alias in the output (defaults to `name`). */
-      alias?: string
-      projection?: Projection
-    }
+  | { kind: "deref"; name: string; alias?: string; projection?: Projection }
 
-interface ParsedQuery {
+export interface ParsedQuery {
+  kind: "select" | "count"
   typeFilter?: string
-  extraFilter?: FilterExpr
-  index?: number
+  filter?: FilterExpr
+  order?: OrderKey[]
+  /** inclusive index — single item, null means "no index" */
+  index?: { start: number; end?: number; exclusiveEnd?: boolean }
   projection?: Projection
 }
 
-const TYPE_RE = /_type\s*==\s*"([^"]+)"/
-const EQ_RE = /([a-zA-Z_][\w.]*)\s*==\s*("([^"]*)"|\$([a-zA-Z_]\w*)|(-?\d+))/
-const INDEX_RE = /\[(-?\d+)\]\s*$/
+// --- Tokenizer -------------------------------------------------------------
 
-export function parseQuery(query: string): ParsedQuery {
-  const q = query.trim()
-  const parsed: ParsedQuery = {}
+type TokKind =
+  | "*"
+  | "["
+  | "]"
+  | "{"
+  | "}"
+  | "("
+  | ")"
+  | ","
+  | "."
+  | ".."
+  | "..."
+  | "|"
+  | "->"
+  | ":"
+  | "=="
+  | "!="
+  | "<"
+  | "<="
+  | ">"
+  | ">="
+  | "&&"
+  | "||"
+  | "$"
+  | "ident"
+  | "string"
+  | "number"
+  | "boolean"
+  | "null"
+  | "eof"
 
-  // Separate the `*[...]` filter (+ optional index) from the trailing projection.
-  // We scan from the left to find the end of the filter bracket at depth 0.
-  const filterStart = q.indexOf("*[")
-  if (filterStart !== 0) throw new Error(`Unsupported query: ${query}`)
+interface Tok {
+  kind: TokKind
+  value?: string | number | boolean | null
+  pos: number
+}
 
-  let i = 2
-  let depth = 1
-  let inStr = false
-  for (; i < q.length; i++) {
-    const c = q[i]!
-    if (c === '"' && q[i - 1] !== "\\") inStr = !inStr
-    if (inStr) continue
-    if (c === "[") depth++
-    else if (c === "]") {
-      depth--
-      if (depth === 0) break
+const SINGLE_TOKENS: Record<string, TokKind> = {
+  "*": "*",
+  "[": "[",
+  "]": "]",
+  "{": "{",
+  "}": "}",
+  "(": "(",
+  ")": ")",
+  ",": ",",
+  "|": "|",
+  "$": "$",
+  ":": ":",
+}
+
+function tokenize(input: string): Tok[] {
+  const out: Tok[] = []
+  let i = 0
+  while (i < input.length) {
+    const c = input[i]!
+    // whitespace
+    if (/\s/.test(c)) {
+      i++
+      continue
     }
-  }
-  if (depth !== 0) throw new Error(`Unbalanced brackets in: ${query}`)
-  const filterInner = q.slice(2, i)
-  let rest = q.slice(i + 1).trim()
-
-  // Optional `[N]` index
-  const idxMatch = rest.match(/^\[(-?\d+)\]/)
-  if (idxMatch) {
-    parsed.index = Number(idxMatch[1])
-    rest = rest.slice(idxMatch[0].length).trim()
-  }
-
-  // Optional `{...}` projection
-  if (rest.startsWith("{")) {
-    const { body, end } = readBraceBody(rest, 0)
-    parsed.projection = parseProjectionBody(body)
-    const tail = rest.slice(end + 1).trim()
-    if (tail) throw new Error(`Unexpected trailing content: ${tail}`)
-  } else if (rest) {
-    throw new Error(`Unexpected trailing content: ${rest}`)
-  }
-
-  // Parse the filter expression
-  parseFilter(filterInner, parsed)
-
-  return parsed
-}
-
-function parseFilter(inner: string, parsed: ParsedQuery): void {
-  const t = inner.match(TYPE_RE)
-  if (t) parsed.typeFilter = t[1]
-
-  // Optional `&& field == value`
-  const parts = splitTopLevel(inner, "&&").map((p) => p.trim())
-  for (const p of parts) {
-    if (TYPE_RE.test(p)) continue
-    const m = p.match(EQ_RE)
-    if (!m) continue
-    const path = m[1]!.split(".")
-    const value: Scalar | { param: string } = m[3] !== undefined
-      ? (m[3] as string)
-      : m[4] !== undefined
-        ? { param: m[4]! }
-        : Number(m[5])
-    const expr: FilterExpr = { kind: "eq", path, value }
-    parsed.extraFilter = parsed.extraFilter
-      ? { kind: "and", left: parsed.extraFilter, right: expr }
-      : expr
-  }
-}
-
-/** Given a string starting at `{`, return the body inside and the closing `}` index. */
-function readBraceBody(s: string, start: number): { body: string; end: number } {
-  if (s[start] !== "{") throw new Error(`Expected '{' at ${start}`)
-  let depth = 0
-  let inStr = false
-  for (let i = start; i < s.length; i++) {
-    const c = s[i]!
-    if (c === '"' && s[i - 1] !== "\\") inStr = !inStr
-    if (inStr) continue
-    if (c === "{") depth++
-    else if (c === "}") {
-      depth--
-      if (depth === 0) return { body: s.slice(start + 1, i), end: i }
+    // multi-char
+    if (c === "." && input[i + 1] === "." && input[i + 2] === ".") {
+      out.push({ kind: "...", pos: i })
+      i += 3
+      continue
     }
-  }
-  throw new Error(`Unbalanced braces`)
-}
-
-function parseProjectionBody(body: string): Projection {
-  const items: ProjectionItem[] = []
-  const segs = splitTopLevel(body, ",")
-  for (const raw of segs) {
-    const s = raw.trim()
-    if (!s) continue
-    items.push(parseProjectionItem(s))
-  }
-  return { items }
-}
-
-function parseProjectionItem(s: string): ProjectionItem {
-  // "alias": <something>
-  const aliased = s.match(/^"([^"]+)"\s*:\s*(.+)$/s)
-  if (aliased) {
-    const alias = aliased[1]!
-    const expr = aliased[2]!.trim()
-    // "alias": author->{name} — treat as deref with alias
-    const derefWithProj = expr.match(/^([a-zA-Z_]\w*)\s*->\s*\{/)
-    if (derefWithProj) {
-      const { body, end } = readBraceBody(expr, expr.indexOf("{"))
-      if (expr.slice(end + 1).trim()) throw new Error(`Trailing content after }: ${expr}`)
-      return { kind: "deref", name: derefWithProj[1]!, alias, projection: parseProjectionBody(body) }
+    if (c === "." && input[i + 1] === ".") {
+      out.push({ kind: "..", pos: i })
+      i += 2
+      continue
     }
-    // "alias": author->
-    const derefBare = expr.match(/^([a-zA-Z_]\w*)\s*->\s*$/)
-    if (derefBare) return { kind: "deref", name: derefBare[1]!, alias }
-    // "alias": path.to.thing
-    if (/^[a-zA-Z_][\w.]*$/.test(expr)) return { kind: "rename", alias, path: expr.split(".") }
-    throw new Error(`Unsupported projection expression: ${expr}`)
-  }
-
-  // bare field: `title`
-  if (/^[a-zA-Z_]\w*$/.test(s)) return { kind: "field", name: s }
-
-  // field with deref: `author->` or `author->{...}`
-  const deref = s.match(/^([a-zA-Z_]\w*)\s*->\s*(\{)?/)
-  if (deref) {
-    if (deref[2]) {
-      const { body, end } = readBraceBody(s, s.indexOf("{"))
-      if (s.slice(end + 1).trim()) throw new Error(`Trailing content after }: ${s}`)
-      return { kind: "deref", name: deref[1]!, projection: parseProjectionBody(body) }
+    if (c === "-" && input[i + 1] === ">") {
+      out.push({ kind: "->", pos: i })
+      i += 2
+      continue
     }
-    return { kind: "deref", name: deref[1]! }
+    if (c === "=" && input[i + 1] === "=") {
+      out.push({ kind: "==", pos: i })
+      i += 2
+      continue
+    }
+    if (c === "!" && input[i + 1] === "=") {
+      out.push({ kind: "!=", pos: i })
+      i += 2
+      continue
+    }
+    if (c === "<" && input[i + 1] === "=") {
+      out.push({ kind: "<=", pos: i })
+      i += 2
+      continue
+    }
+    if (c === ">" && input[i + 1] === "=") {
+      out.push({ kind: ">=", pos: i })
+      i += 2
+      continue
+    }
+    if (c === "&" && input[i + 1] === "&") {
+      out.push({ kind: "&&", pos: i })
+      i += 2
+      continue
+    }
+    if (c === "|" && input[i + 1] === "|") {
+      out.push({ kind: "||", pos: i })
+      i += 2
+      continue
+    }
+    // single
+    if (SINGLE_TOKENS[c]) {
+      out.push({ kind: SINGLE_TOKENS[c], pos: i })
+      i++
+      continue
+    }
+    if (c === "<") {
+      out.push({ kind: "<", pos: i })
+      i++
+      continue
+    }
+    if (c === ">") {
+      out.push({ kind: ">", pos: i })
+      i++
+      continue
+    }
+    if (c === ".") {
+      out.push({ kind: ".", pos: i })
+      i++
+      continue
+    }
+    // string literal
+    if (c === '"' || c === "'") {
+      const quote = c
+      let j = i + 1
+      let str = ""
+      while (j < input.length && input[j] !== quote) {
+        if (input[j] === "\\") {
+          str += input[j + 1] ?? ""
+          j += 2
+        } else {
+          str += input[j]!
+          j++
+        }
+      }
+      if (input[j] !== quote) throw new Error(`Unterminated string at ${i}`)
+      out.push({ kind: "string", value: str, pos: i })
+      i = j + 1
+      continue
+    }
+    // number (including negative)
+    if (/[-0-9]/.test(c) && (c !== "-" || /[0-9]/.test(input[i + 1] ?? ""))) {
+      let j = i
+      if (c === "-") j++
+      while (j < input.length && /[0-9]/.test(input[j]!)) j++
+      out.push({ kind: "number", value: Number(input.slice(i, j)), pos: i })
+      i = j
+      continue
+    }
+    // identifier / keyword
+    if (/[a-zA-Z_]/.test(c)) {
+      let j = i
+      while (j < input.length && /[a-zA-Z0-9_]/.test(input[j]!)) j++
+      const word = input.slice(i, j)
+      if (word === "true" || word === "false") {
+        out.push({ kind: "boolean", value: word === "true", pos: i })
+      } else if (word === "null") {
+        out.push({ kind: "null", pos: i })
+      } else {
+        out.push({ kind: "ident", value: word, pos: i })
+      }
+      i = j
+      continue
+    }
+    throw new Error(`Unexpected character ${JSON.stringify(c)} at ${i}`)
   }
-
-  // field with inline object projection: `seo{title}`
-  const subObj = s.match(/^([a-zA-Z_]\w*)\s*\{/)
-  if (subObj) {
-    const { body, end } = readBraceBody(s, s.indexOf("{"))
-    if (s.slice(end + 1).trim()) throw new Error(`Trailing content after }: ${s}`)
-    return { kind: "subObject", name: subObj[1]!, projection: parseProjectionBody(body) }
-  }
-
-  throw new Error(`Unsupported projection item: ${s}`)
+  out.push({ kind: "eof", pos: input.length })
+  return out
 }
 
-function splitTopLevel(s: string, delim: string): string[] {
-  const out: string[] = []
-  let depth = 0
-  let inStr = false
-  let buf = ""
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i]!
-    if (c === '"' && s[i - 1] !== "\\") inStr = !inStr
-    if (!inStr) {
-      if (c === "{" || c === "[" || c === "(") depth++
-      else if (c === "}" || c === "]" || c === ")") depth--
-      else if (
-        depth === 0 &&
-        s.startsWith(delim, i)
-      ) {
-        out.push(buf)
-        buf = ""
-        i += delim.length - 1
-        continue
+// --- Parser ----------------------------------------------------------------
+
+class Parser {
+  private pos = 0
+  constructor(private tokens: Tok[]) {}
+
+  private peek(k = 0): Tok {
+    return this.tokens[this.pos + k] ?? { kind: "eof", pos: -1 }
+  }
+  private consume(): Tok {
+    return this.tokens[this.pos++]!
+  }
+  private expect(kind: TokKind, value?: string): Tok {
+    const t = this.peek()
+    if (t.kind !== kind || (value !== undefined && t.value !== value)) {
+      throw new Error(`Expected ${kind}${value ? ` "${value}"` : ""}, got ${t.kind} at ${t.pos}`)
+    }
+    return this.consume()
+  }
+  private match(kind: TokKind, value?: string): boolean {
+    const t = this.peek()
+    if (t.kind === kind && (value === undefined || t.value === value)) {
+      this.consume()
+      return true
+    }
+    return false
+  }
+  private matchIdent(name: string): boolean {
+    const t = this.peek()
+    if (t.kind === "ident" && t.value === name) {
+      this.consume()
+      return true
+    }
+    return false
+  }
+
+  parseQuery(): ParsedQuery {
+    // `count(*[...])` — a top-level function wrapping a source
+    if (this.peek().kind === "ident" && this.peek().value === "count" && this.peek(1).kind === "(") {
+      this.consume() // count
+      this.consume() // (
+      const inner = this.parseSelect()
+      this.expect(")")
+      this.expect("eof")
+      return { ...inner, kind: "count" }
+    }
+    const q = this.parseSelect()
+    this.expect("eof")
+    return q
+  }
+
+  private parseSelect(): ParsedQuery {
+    const q: ParsedQuery = { kind: "select" }
+    this.expect("*")
+    if (this.match("[")) {
+      q.filter = this.parseFilter()
+      // pull type filter to top-level for executor + CSM convenience
+      q.typeFilter = extractTypeFilter(q.filter)
+      this.expect("]")
+    }
+    // Pipeline operators: | order(...)
+    while (this.peek().kind === "|" && this.peek(1).kind !== "|") {
+      this.consume() // |
+      if (this.matchIdent("order")) {
+        this.expect("(")
+        q.order = this.parseOrderKeys()
+        this.expect(")")
+      } else {
+        const t = this.peek()
+        throw new Error(`Expected order() after |, got ${t.kind}${t.value ? ` "${t.value}"` : ""}`)
       }
     }
-    buf += c
+    // Index: [n] or [a..b] or [a...b]
+    if (this.peek().kind === "[") {
+      this.consume()
+      const start = this.expect("number").value as number
+      if (this.match("..")) {
+        const end = this.expect("number").value as number
+        q.index = { start, end, exclusiveEnd: false }
+      } else if (this.match("...")) {
+        const end = this.expect("number").value as number
+        q.index = { start, end, exclusiveEnd: true }
+      } else {
+        q.index = { start }
+      }
+      this.expect("]")
+    }
+    // Projection
+    if (this.peek().kind === "{") {
+      q.projection = this.parseProjection()
+    }
+    return q
   }
-  if (buf.length) out.push(buf)
-  return out
+
+  private parseOrderKeys(): OrderKey[] {
+    const keys: OrderKey[] = []
+    do {
+      const path = this.parsePath()
+      let dir: "asc" | "desc" = "asc"
+      if (this.matchIdent("asc")) dir = "asc"
+      else if (this.matchIdent("desc")) dir = "desc"
+      keys.push({ path, dir })
+    } while (this.match(","))
+    return keys
+  }
+
+  private parseFilter(): FilterExpr {
+    return this.parseOr()
+  }
+  private parseOr(): FilterExpr {
+    let left = this.parseAnd()
+    while (this.match("||")) {
+      const right = this.parseAnd()
+      left = { kind: "or", left, right }
+    }
+    return left
+  }
+  private parseAnd(): FilterExpr {
+    let left = this.parseCmp()
+    while (this.match("&&")) {
+      const right = this.parseCmp()
+      left = { kind: "and", left, right }
+    }
+    return left
+  }
+  private parseCmp(): FilterExpr {
+    if (this.match("(")) {
+      const inner = this.parseOr()
+      this.expect(")")
+      return inner
+    }
+    const left = this.parseOperand()
+    const t = this.peek()
+    let op: CmpOp | null = null
+    if (t.kind === "==") op = "=="
+    else if (t.kind === "!=") op = "!="
+    else if (t.kind === "<") op = "<"
+    else if (t.kind === "<=") op = "<="
+    else if (t.kind === ">") op = ">"
+    else if (t.kind === ">=") op = ">="
+    else if (t.kind === "ident" && t.value === "match") op = "match"
+    if (!op) {
+      // bare operand — treat as truthy check (e.g. `defined`) — we don't
+      // implement those yet, but a bare path with no comparison is rare
+      // in valid GROQ so we throw.
+      throw new Error(`Expected comparison operator at ${t.pos}`)
+    }
+    this.consume()
+    const right = this.parseOperand()
+    return { kind: "cmp", op, left, right }
+  }
+
+  private parseOperand(): Operand {
+    const t = this.peek()
+    if (t.kind === "string") {
+      this.consume()
+      return { kind: "literal", value: t.value as string }
+    }
+    if (t.kind === "number") {
+      this.consume()
+      return { kind: "literal", value: t.value as number }
+    }
+    if (t.kind === "boolean") {
+      this.consume()
+      return { kind: "literal", value: t.value as boolean }
+    }
+    if (t.kind === "null") {
+      this.consume()
+      return { kind: "literal", value: null }
+    }
+    if (t.kind === "$") {
+      this.consume()
+      const name = this.expect("ident").value as string
+      return { kind: "param", name }
+    }
+    if (t.kind === "ident") {
+      return { kind: "path", path: this.parsePath() }
+    }
+    throw new Error(`Unexpected token ${t.kind} at ${t.pos}`)
+  }
+
+  private parsePath(): string[] {
+    const parts: string[] = []
+    parts.push(this.expect("ident").value as string)
+    while (this.match(".")) {
+      parts.push(this.expect("ident").value as string)
+    }
+    return parts
+  }
+
+  private parseProjection(): Projection {
+    this.expect("{")
+    const items: ProjectionItem[] = []
+    if (this.peek().kind !== "}") {
+      items.push(this.parseProjectionItem())
+      while (this.match(",")) {
+        if (this.peek().kind === "}") break
+        items.push(this.parseProjectionItem())
+      }
+    }
+    this.expect("}")
+    return { items }
+  }
+
+  private parseProjectionItem(): ProjectionItem {
+    const t = this.peek()
+    if (t.kind === "string") {
+      // "alias": <rhs>
+      this.consume()
+      const alias = t.value as string
+      this.expect(":")
+      // rhs: path, or ident-> with optional projection
+      const first = this.peek()
+      if (first.kind !== "ident") {
+        throw new Error(`Expected identifier after "${alias}:" at ${first.pos}`)
+      }
+      const firstName = first.value as string
+      // Look ahead for "->"
+      if (this.peek(1).kind === "->") {
+        this.consume() // ident
+        this.consume() // ->
+        if (this.peek().kind === "{") {
+          return { kind: "deref", name: firstName, alias, projection: this.parseProjection() }
+        }
+        return { kind: "deref", name: firstName, alias }
+      }
+      const path = this.parsePath()
+      return { kind: "rename", alias, path }
+    }
+    // Bare ident
+    const name = this.expect("ident").value as string
+    // deref?
+    if (this.match("->")) {
+      if (this.peek().kind === "{") {
+        return { kind: "deref", name, projection: this.parseProjection() }
+      }
+      return { kind: "deref", name }
+    }
+    // inline sub-object projection?
+    if (this.peek().kind === "{") {
+      return { kind: "subObject", name, projection: this.parseProjection() }
+    }
+    return { kind: "field", name }
+  }
+}
+
+function extractTypeFilter(f: FilterExpr): string | undefined {
+  if (f.kind === "cmp" && f.op === "==") {
+    if (
+      f.left.kind === "path" &&
+      f.left.path.length === 1 &&
+      f.left.path[0] === "_type" &&
+      f.right.kind === "literal" &&
+      typeof f.right.value === "string"
+    )
+      return f.right.value
+  }
+  if (f.kind === "and") {
+    return extractTypeFilter(f.left) ?? extractTypeFilter(f.right)
+  }
+  return undefined
+}
+
+export function parseQuery(query: string): ParsedQuery {
+  return new Parser(tokenize(query)).parseQuery()
+}
+
+// --- Evaluation ------------------------------------------------------------
+
+function resolveOperand(
+  op: Operand,
+  doc: Record<string, unknown>,
+  params: Record<string, unknown>,
+): unknown {
+  if (op.kind === "literal") return op.value
+  if (op.kind === "param") return params[op.name]
+  return getPath(doc, op.path)
 }
 
 function getPath(doc: Record<string, unknown>, path: string[]): unknown {
@@ -251,17 +552,64 @@ function matchFilter(
   expr: FilterExpr,
   params: Record<string, unknown>,
 ): boolean {
-  if (expr.kind === "and")
+  if (expr.kind === "and") {
     return matchFilter(doc, expr.left, params) && matchFilter(doc, expr.right, params)
-  const got = getPath(doc as Record<string, unknown>, expr.path)
-  const wanted =
-    typeof expr.value === "object" && expr.value !== null && "param" in expr.value
-      ? params[expr.value.param]
-      : expr.value
-  return got === wanted
+  }
+  if (expr.kind === "or") {
+    return matchFilter(doc, expr.left, params) || matchFilter(doc, expr.right, params)
+  }
+  const left = resolveOperand(expr.left, doc as unknown as Record<string, unknown>, params)
+  const right = resolveOperand(expr.right, doc as unknown as Record<string, unknown>, params)
+  switch (expr.op) {
+    case "==":
+      return left === right
+    case "!=":
+      return left !== right
+    case "<":
+      return compare(left, right) < 0
+    case "<=":
+      return compare(left, right) <= 0
+    case ">":
+      return compare(left, right) > 0
+    case ">=":
+      return compare(left, right) >= 0
+    case "match": {
+      // GROQ's `match`: wildcard match (case-insensitive, * is wildcard).
+      if (typeof left !== "string" || typeof right !== "string") return false
+      const pattern = new RegExp(
+        "^" +
+          right
+            .split("*")
+            .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*") +
+          "$",
+        "i",
+      )
+      return pattern.test(left)
+    }
+  }
 }
 
-/** CSM bookkeeping. */
+function compare(a: unknown, b: unknown): number {
+  if (typeof a === "number" && typeof b === "number") return a - b
+  if (typeof a === "string" && typeof b === "string") {
+    return a < b ? -1 : a > b ? 1 : 0
+  }
+  return 0
+}
+
+function applyOrder(docs: SanityDocument[], keys: OrderKey[]): SanityDocument[] {
+  return [...docs].sort((x, y) => {
+    for (const k of keys) {
+      const av = getPath(x as unknown as Record<string, unknown>, k.path)
+      const bv = getPath(y as unknown as Record<string, unknown>, k.path)
+      const cmp = compare(av, bv)
+      if (cmp !== 0) return k.dir === "desc" ? -cmp : cmp
+    }
+    return 0
+  })
+}
+
 class CsmBuilder {
   documents: { _id: string; _type: string }[] = []
   paths: string[] = []
@@ -302,31 +650,42 @@ export function executeQuery(
 
   let filtered = docs
   if (parsed.typeFilter) filtered = filtered.filter((d) => d._type === parsed.typeFilter)
-  if (parsed.extraFilter)
-    filtered = filtered.filter((d) => matchFilter(d, parsed.extraFilter!, params))
+  if (parsed.filter) filtered = filtered.filter((d) => matchFilter(d, parsed.filter!, params))
+  if (parsed.order) filtered = applyOrder(filtered, parsed.order)
+
+  if (parsed.kind === "count") {
+    return { result: filtered.length, resultSourceMap: { documents: [], paths: [], mappings: {} } }
+  }
 
   const csm = new CsmBuilder()
 
   const projectOne = (doc: SanityDocument, resultBase: string): Value => {
-    if (!parsed.projection) {
-      return walkAndRecord(doc, doc, [], resultBase, csm)
-    }
+    if (!parsed.projection) return walkAndRecord(doc, doc, [], resultBase, csm)
     return applyProjection(doc, doc, [], parsed.projection, resultBase, csm, byId)
   }
 
-  let result: Value
-  if (parsed.index !== undefined) {
-    const i = parsed.index < 0 ? filtered.length + parsed.index : parsed.index
-    const doc = filtered[i]
-    result = doc ? projectOne(doc, `$`) : null
-  } else {
-    result = filtered.map((d, i) => projectOne(d, `$[${i}]`))
+  // Apply slicing
+  let sliced = filtered
+  const idx = parsed.index
+  if (idx) {
+    if (idx.end === undefined) {
+      const n = idx.start < 0 ? filtered.length + idx.start : idx.start
+      const doc = filtered[n]
+      return {
+        result: doc ? projectOne(doc, "$") : null,
+        resultSourceMap: csm.build(),
+      }
+    }
+    const start = idx.start < 0 ? filtered.length + idx.start : idx.start
+    const endRaw = idx.end < 0 ? filtered.length + idx.end : idx.end
+    const end = idx.exclusiveEnd ? endRaw : endRaw + 1
+    sliced = filtered.slice(Math.max(0, start), Math.max(0, end))
   }
 
+  const result = sliced.map((d, i) => projectOne(d, `$[${i}]`))
   return { result, resultSourceMap: csm.build() }
 }
 
-/** Apply a projection tree to an object (document or sub-object). */
 function applyProjection(
   sourceDoc: SanityDocument,
   value: unknown,
@@ -384,7 +743,6 @@ function applyProjection(
         out[alias] = null
         continue
       }
-      // When dereferencing, CSM now points to the TARGET document, not the source.
       if (item.projection) {
         out[alias] = applyProjection(
           target,
@@ -415,7 +773,11 @@ function walkAndRecord(
     const srcPathStr = "$['" + sourcePath.join("']['") + "']"
     csm.mappings[resultPath] = {
       type: "value",
-      source: { type: "documentValue", document: csm.doc(doc._id, doc._type), path: csm.path(srcPathStr) },
+      source: {
+        type: "documentValue",
+        document: csm.doc(doc._id, doc._type),
+        path: csm.path(srcPathStr),
+      },
     }
     return value
   }

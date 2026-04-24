@@ -45,7 +45,7 @@ describe("parseQuery", () => {
   test("parses type filter + equality + parameter", () => {
     const p = parseQuery('*[_type == "post" && slug.current == $slug]')
     expect(p.typeFilter).toBe("post")
-    expect(p.extraFilter).toBeDefined()
+    expect(p.filter).toBeDefined()
   })
 
   test("parses projection with bare fields", () => {

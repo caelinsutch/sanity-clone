@@ -88,4 +88,16 @@ describe("inferQueryType", () => {
     const t = inferQueryType('*[_type == "post"]{notAField}', schema)
     expect(t).toContain("notAField: unknown")
   })
+
+  test("count() → number", () => {
+    expect(inferQueryType('count(*[_type == "post"])', schema)).toBe("number")
+  })
+
+  test("[0..n] slice → array, not single", () => {
+    expect(inferQueryType('*[_type == "post"][0..2]', schema)).toBe("Post[]")
+  })
+
+  test("| order(...) doesn't change type shape", () => {
+    expect(inferQueryType('*[_type == "post"] | order(title asc)', schema)).toBe("Post[]")
+  })
 })

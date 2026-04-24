@@ -43,7 +43,11 @@ export function inferQueryType(
     ? projectDocumentType(parsed.projection, docType, schema, unknown)
     : unknown
 
-  if (parsed.index !== undefined) return `${itemType} | null`
+  // count(*[...]) → number
+  if (parsed.kind === "count") return "number"
+
+  // [N] → single item or null; [a..b] / [a...b] → T[] (still a list)
+  if (parsed.index && parsed.index.end === undefined) return `${itemType} | null`
   return `${itemType}[]`
 }
 
