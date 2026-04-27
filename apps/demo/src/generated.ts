@@ -47,14 +47,61 @@ export interface Post extends SanityCloneDocument<"post"> {
   author?: { _type: "reference"; _ref: DocumentByType["author"]["_id"] }
 }
 
+/** Page */
+export interface Page extends SanityCloneDocument<"page"> {
+  title?: string
+  slug?: { _type?: "slug"; current: string }
+  slices?: ({ _type: "heroSlice"; _key: string; heading?: string; subheading?: string; ctaLabel?: string; ctaHref?: string } | { _type: "featureGridSlice"; _key: string; heading?: string; features?: { _type: "feature"; _key: string; title?: string; description?: string }[] } | { _type: "richTextSlice"; _key: string; body?: PortableTextBlock[] } | { _type: "ctaSlice"; _key: string; heading?: string; buttonLabel?: string; buttonHref?: string })[]
+}
+
 /** Any document in this schema. */
-export type AnyDocument = SiteSettings | Author | Post
+export type AnyDocument = SiteSettings | Author | Post | Page
 
 /** Map from document type name to its interface. */
 export type DocumentByType = {
   siteSettings: SiteSettings
   author: Author
   post: Post
+  page: Page
+}
+
+// --- Inline object types (for use in array.of) ---
+
+export interface HeroSlice {
+  _type: "heroSlice"
+  _key: string
+  heading?: string
+  subheading?: string
+  ctaLabel?: string
+  ctaHref?: string
+}
+
+export interface FeatureGridSlice {
+  _type: "featureGridSlice"
+  _key: string
+  heading?: string
+  features?: { _type: "feature"; _key: string; title?: string; description?: string }[]
+}
+
+export interface Feature {
+  _type: "feature"
+  _key: string
+  title?: string
+  description?: string
+}
+
+export interface RichTextSlice {
+  _type: "richTextSlice"
+  _key: string
+  body?: PortableTextBlock[]
+}
+
+export interface CtaSlice {
+  _type: "ctaSlice"
+  _key: string
+  heading?: string
+  buttonLabel?: string
+  buttonHref?: string
 }
 
 

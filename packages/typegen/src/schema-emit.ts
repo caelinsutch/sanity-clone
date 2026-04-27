@@ -86,7 +86,49 @@ export function emitSchemaTypes(schema: Schema, options: EmitOptions = {}): stri
   lines.push(`}`)
   lines.push("")
 
+  // Inline object types used in arrays — collected as type aliases so
+  // consumers can import them individually (e.g. for slice components).
+  const inlineTypes = collectInlineObjectTypes(schema)
+  if (inlineTypes.size > 0) {
+    lines.push(`// --- Inline object types (for use in array.of) ---`)
+    lines.push("")
+    for (const [typeName, field] of inlineTypes) {
+      const inner = field.fields
+        .map((f) => `  ${f.name}?: ${fieldType(f, schema)}`)
+        .join("\n")
+      lines.push(`export interface ${pascal(typeName)} {`)
+      lines.push(`  _type: "${typeName}"`)
+      lines.push(`  _key: string`)
+      lines.push(inner)
+      lines.push(`}`)
+      lines.push("")
+    }
+  }
+
   return lines.join("\n")
+}
+
+/** Walk every array-of-object field in the schema; collect inline types by name. */
+function collectInlineObjectTypes(
+  schema: Schema,
+): Map<string, { fields: FieldDef[]; typeName: string }> {
+  const out = new Map<string, { fields: FieldDef[]; typeName: string }>()
+  const visit = (field: FieldDef) => {
+    if (field.type === "array") {
+      for (const item of field.of) {
+        if (item.type === "object" && item.typeName) {
+          out.set(item.typeName, { fields: item.fields, typeName: item.typeName })
+          for (const sub of item.fields) visit(sub)
+        } else {
+          visit(item)
+        }
+      }
+    } else if (field.type === "object") {
+      for (const sub of field.fields) visit(sub)
+    }
+  }
+  for (const type of schema.types) for (const f of type.fields) visit(f)
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +161,7 @@ function fieldType(field: FieldDef, schema: Schema): string {
       return `{ _type: "reference"; _ref: ${refUnion || "string"} }`
     }
     case "array": {
-      const itemTypes = field.of.map((f) => fieldType(f, schema))
+      const itemTypes = field.of.map((f) => arrayItemType(f, schema))
       const inner = itemTypes.length === 1 ? itemTypes[0] : `(${itemTypes.join(" | ")})`
       return `${inner}[]`
     }
@@ -127,13 +169,27 @@ function fieldType(field: FieldDef, schema: Schema): string {
       const inner = field.fields
         .map((f) => `${f.name}?: ${fieldType(f, schema)}`)
         .join("; ")
-      return `{ ${inner} }`
+      const prefix = field.typeName ? `_type: "${field.typeName}"; _key: string; ` : ""
+      return `{ ${prefix}${inner} }`
     }
     case "blockContent":
       return "PortableTextBlock[]"
     default:
       return "unknown"
   }
+}
+
+/**
+ * A field appearing inside `array.of` needs a `_type` (and `_key`) so
+ * consumers can discriminate the union.
+ */
+function arrayItemType(field: FieldDef, schema: Schema): string {
+  if (field.type === "object") {
+    const inner = field.fields.map((f) => `${f.name}?: ${fieldType(f, schema)}`).join("; ")
+    const typeName = field.typeName ?? field.name
+    return `{ _type: "${typeName}"; _key: string; ${inner} }`
+  }
+  return fieldType(field, schema)
 }
 
 function pascal(s: string): string {

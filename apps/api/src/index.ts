@@ -52,6 +52,22 @@ function requireAdmin(c: Context<{ Bindings: Env }>): boolean {
 
 app.get("/v1/health", (c) => c.json({ ok: true }))
 
+/**
+ * Return the serialized schema mirror for a dataset.
+ *
+ * External consumers use this to codegen types (`typegen --fromApi ...`)
+ * without needing the TS source. Internally just a thin wrapper around
+ * fetching `system.schema`.
+ */
+app.get("/v1/schema/:dataset", async (c) => {
+  const dataset = c.req.param("dataset")
+  const doc = await getDoc(c.env, dataset, "system.schema")
+  if (!doc) return c.json({ error: "No schema published to this dataset" }, 404)
+  // Strip internal fields
+  const { _id, _type, _rev, _createdAt, _updatedAt, ...schema } = doc as Record<string, unknown>
+  return c.json(schema)
+})
+
 // Resolve docs for a given perspective.
 // - "published": strip any draft-only docs
 // - "drafts": for each id, prefer the draft version, fall back to published

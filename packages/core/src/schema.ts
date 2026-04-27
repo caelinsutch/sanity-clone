@@ -262,3 +262,82 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   }
   return out
 }
+
+/**
+ * Serialize the schema to plain JSON, stripping non-serializable bits
+ * (the `resolve()` / `locations()` callback functions).
+ *
+ * The serialized form is what gets mirrored to the content lake as the
+ * `_system.schema` document, and what `@repo/typegen --fromApi` fetches
+ * to codegen types for external consumer apps.
+ *
+ * Mirrors Sanity's pattern where the primary schema lives as code in the
+ * Studio, but a JSON mirror lives in the database for agents / integrations
+ * / external type-gen to consume without needing the TS source.
+ */
+export interface SerializedSchema {
+  types: SerializedType[]
+  routes: SerializedRoute[]
+}
+
+export interface SerializedType {
+  name: string
+  title: string
+  type: "document"
+  fields: FieldDef[]
+  /**
+   * Simple preview picker. Function-based previews aren't serialized;
+   * consumers fall back to the doc's title/id.
+   */
+  preview?: { select: { title?: string; subtitle?: string; media?: string } }
+}
+
+export interface SerializedRoute {
+  pattern: string
+  type: string
+}
+
+export function serializeSchema(schema: Schema): SerializedSchema {
+  return {
+    types: schema.types.map((t) => ({
+      name: t.name,
+      title: t.title,
+      type: t.type,
+      fields: serializeFields(t.fields),
+      preview: t.preview,
+    })),
+    routes: (schema.routes ?? []).map((r) => ({ pattern: r.pattern, type: r.type })),
+  }
+}
+
+function serializeFields(fields: FieldDef[]): FieldDef[] {
+  // FieldDef is already a plain data shape — but `of` on arrays may contain
+  // nested fields that we want to recurse into to ensure everything is
+  // JSON-safe (no symbols, no functions leaking in).
+  return fields.map((f) => {
+    if (f.type === "array") {
+      return { ...f, of: serializeFields(f.of) }
+    }
+    if (f.type === "object") {
+      return { ...f, fields: serializeFields(f.fields) }
+    }
+    return f
+  })
+}
+
+/**
+ * Parse a SerializedSchema back into a Schema shape that typegen can
+ * consume. Routes come back without `resolve()` so URL-resolving features
+ * of the Studio won't work purely from the mirror — but type emission does.
+ */
+export function deserializeSchema(serialized: SerializedSchema): Schema {
+  return {
+    types: serialized.types as DocumentTypeDef[],
+    routes: serialized.routes.map((r) => ({
+      pattern: r.pattern,
+      type: r.type,
+      // A no-op resolve — not used during type emission.
+      resolve: () => ({ filter: `*[_type == "${r.type}"][0]` }),
+    })),
+  }
+}

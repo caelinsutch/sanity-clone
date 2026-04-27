@@ -1,13 +1,21 @@
 #!/usr/bin/env bun
 /**
- * CLI: read a schema file and emit TS types.
+ * CLI: read a schema file (or fetch it over HTTP from the API) and emit TS types.
  *
- *   sanity-clone-typegen --schema packages/schema/src/index.ts --out apps/demo/src/generated.ts
+ * From local TS source (for use inside a monorepo with @repo/schema):
  *
- * The schema file must `export` a `schema` object (Schema type).
+ *   sanity-clone-typegen --schema packages/schema/src/index.ts \
+ *                        --queries src/lib/queries.ts \
+ *                        --out src/generated.ts
  *
- * Optional: pass `--queries <file>` to ALSO emit typed aliases for every
- * query registered with `defineQueries({...})` in that file.
+ * From a running API (for external apps that want to codegen without
+ * importing the schema source code):
+ *
+ *   sanity-clone-typegen --fromApi http://cms.example.com/v1/schema/production \
+ *                        --queries src/lib/queries.ts \
+ *                        --out src/generated.ts
+ *
+ * The schema file must `export` a `schema` object (Schema type) when using --schema.
  */
 
 /// <reference types="node" />
@@ -17,10 +25,12 @@ import { pathToFileURL } from "node:url"
 import { emitSchemaTypes } from "./schema-emit"
 import { inferQueryType, type InferOptions } from "./query-infer"
 import type { Schema } from "@repo/core/schema"
+import { deserializeSchema } from "@repo/core/schema"
 import type { TypedQuery } from "./index"
 
 interface Args {
   schema?: string
+  fromApi?: string
   queries?: string
   out?: string
 }
@@ -30,29 +40,45 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
     if (a === "--schema") out.schema = argv[++i]
+    else if (a === "--fromApi") out.fromApi = argv[++i]
     else if (a === "--queries") out.queries = argv[++i]
     else if (a === "--out") out.out = argv[++i]
   }
   return out
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2))
-  if (!args.schema || !args.out) {
-    console.error("Usage: sanity-clone-typegen --schema <file> [--queries <file>] --out <file>")
-    process.exit(1)
+async function loadSchema(args: Args): Promise<Schema> {
+  if (args.fromApi) {
+    const res = await fetch(args.fromApi)
+    if (!res.ok) {
+      throw new Error(`Failed to fetch schema from ${args.fromApi}: ${res.status} ${await res.text()}`)
+    }
+    const serialized = (await res.json()) as Parameters<typeof deserializeSchema>[0]
+    return deserializeSchema(serialized)
+  }
+  if (!args.schema) {
+    throw new Error("Pass either --schema <file> or --fromApi <url>")
   }
   const schemaPath = isAbsolute(args.schema) ? args.schema : resolve(process.cwd(), args.schema)
-  const outPath = isAbsolute(args.out) ? args.out : resolve(process.cwd(), args.out)
+  const mod = (await import(pathToFileURL(schemaPath).href)) as { schema?: Schema }
+  if (!mod.schema) throw new Error(`Schema file ${schemaPath} must export \`schema\`.`)
+  return mod.schema
+}
 
-  const schemaModule = (await import(pathToFileURL(schemaPath).href)) as { schema: Schema }
-  if (!schemaModule.schema) {
-    console.error(`Schema file ${schemaPath} must export \`schema\`.`)
+async function main() {
+  const args = parseArgs(process.argv.slice(2))
+  if ((!args.schema && !args.fromApi) || !args.out) {
+    console.error(
+      "Usage: sanity-clone-typegen { --schema <file> | --fromApi <url> } [--queries <file>] --out <file>",
+    )
     process.exit(1)
   }
+  const outPath = isAbsolute(args.out) ? args.out : resolve(process.cwd(), args.out)
+
+  const schema = await loadSchema(args)
 
   const parts: string[] = []
-  parts.push(emitSchemaTypes(schemaModule.schema))
+  parts.push(emitSchemaTypes(schema))
 
   if (args.queries) {
     const queriesPath = isAbsolute(args.queries)
@@ -70,7 +96,7 @@ async function main() {
       const typeName = `${pascal(name)}Result`
       const inferOpts: InferOptions = {}
       try {
-        const t = inferQueryType(value.query, schemaModule.schema, inferOpts)
+        const t = inferQueryType(value.query, schema, inferOpts)
         parts.push(`export type ${typeName} = ${t}`)
       } catch (e) {
         parts.push(`// Could not infer ${name}: ${(e as Error).message}`)
