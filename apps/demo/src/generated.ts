@@ -107,6 +107,7 @@ export interface CtaSlice {
 
 // --- Query result types -------------------------------------------------
 
+export type PageBySlugQueryResult = Page | null
 export type PostBySlugQueryResult = { _id: string; title: string; body: unknown; author: Pick<Author, "name"> | null } | null
 export type PostCountQueryResult = number
 export type PostListQueryResult = { _id: string; title: string; excerpt: string; slug: string }[]

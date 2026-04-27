@@ -134,32 +134,43 @@ app.post("/v1/data/mutate/:dataset", async (c) => {
   try {
     const result = await applyMutations(c.env, dataset, body.mutations)
 
-    // Fire revalidation webhooks on every mutation. Per-slug tags let
-    // consumers do fine-grained invalidation.
+    // Fire revalidation webhooks on every mutation. Per-type/per-slug tags
+    // let consumers do fine-grained invalidation. We always include the
+    // `_type` itself and, when a `slug.current` exists, `<type>:<slug>`.
+    //
+    // Drafts don't trigger revalidation because the published cache hasn't
+    // actually changed; the preview iframe relies on draft-mode bypass + a
+    // live refresh channel to see draft content.
     const endpoints = (c.env.REVALIDATE_WEBHOOKS ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
     if (endpoints.length) {
-      const tags = result.results
-        .map((r) => {
-          const doc = r.document as { _type?: string; slug?: { current?: string } } | undefined
-          if (!doc) return null
-          if (doc._type === "post" && doc.slug?.current) return `post:${doc.slug.current}`
-          return null
-        })
-        .filter((t): t is string => !!t)
-      const payload = JSON.stringify({ tags })
-      const headers = {
-        "content-type": "application/json",
-        authorization: `Bearer ${c.env.REVALIDATE_SECRET ?? ""}`,
+      const tagSet = new Set<string>()
+      for (const r of result.results) {
+        if (isDraftId(r.id)) continue
+        const doc = r.document as
+          | { _id?: string; _type?: string; slug?: { current?: string } }
+          | undefined
+        if (!doc?._type) continue
+        tagSet.add(doc._type)
+        if (doc.slug?.current) tagSet.add(`${doc._type}:${doc.slug.current}`)
+        if (doc._id) tagSet.add(publishedId(doc._id))
       }
-      for (const url of endpoints) {
-        c.executionCtx.waitUntil(
-          fetch(url, { method: "POST", headers, body: payload }).catch((e) =>
-            console.warn("[revalidate] failed:", url, e),
-          ),
-        )
+      const tags = [...tagSet]
+      if (tags.length) {
+        const payload = JSON.stringify({ tags })
+        const headers = {
+          "content-type": "application/json",
+          authorization: `Bearer ${c.env.REVALIDATE_SECRET ?? ""}`,
+        }
+        for (const url of endpoints) {
+          c.executionCtx.waitUntil(
+            fetch(url, { method: "POST", headers, body: payload }).catch((e) =>
+              console.warn("[revalidate] failed:", url, e),
+            ),
+          )
+        }
       }
     }
     return c.json(result)

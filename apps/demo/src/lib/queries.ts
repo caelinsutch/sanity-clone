@@ -27,3 +27,8 @@ export const postBySlugQuery = defineQuery(
 export const postSlugsQuery = defineQuery(
   '*[_type == "post"]{"slug": slug.current}',
 )
+
+/** A page — entire document including all slices. */
+export const pageBySlugQuery = defineQuery(
+  '*[_type == "page" && slug.current == $slug][0]',
+)

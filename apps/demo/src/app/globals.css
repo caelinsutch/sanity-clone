@@ -46,6 +46,74 @@ ul.posts p { margin: 0; color: #6b6558; }
 }
 .post-body strong { font-weight: 600; }
 .post-body em { font-style: italic; }
+
+/* ---------- Slices ---------- */
+.slice {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  border-bottom: 1px solid #eee6d5;
+}
+.slice:last-child { border-bottom: none; }
+
+.slice-hero {
+  text-align: center;
+  padding: 96px 24px;
+}
+.slice-hero h1 {
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+}
+.slice-hero .subheading {
+  font-size: 20px;
+  color: #6b6558;
+  max-width: 600px;
+  margin: 0 auto 28px;
+}
+.btn-primary {
+  display: inline-block;
+  background: #1a1a1a;
+  color: #fcfaf5;
+  padding: 12px 22px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+}
+.btn-primary:hover { background: #333; }
+
+.slice-feature-grid h2 {
+  text-align: center;
+  font-size: 32px;
+  margin: 0 0 32px;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+}
+.feature {
+  padding: 20px;
+  border: 1px solid #eee6d5;
+  border-radius: 10px;
+  background: #fffdf7;
+}
+.feature h3 { font-size: 18px; margin: 0 0 6px; }
+.feature p { margin: 0; color: #6b6558; }
+
+.slice-cta {
+  text-align: center;
+  background: #f5f0e1;
+  padding: 72px 24px;
+}
+.slice-cta h2 {
+  font-size: 32px;
+  margin: 0 0 20px;
+}
+
+.slice-rich-text { font-size: 18px; }
 .meta { color: #8c8577; font-size: 13px; }
 a { color: #2d7df6; }
 .preview-banner {
