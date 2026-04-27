@@ -328,7 +328,14 @@ describe("perspectives + publish flow", () => {
                 _type: "post",
                 title: "About to publish",
                 slug: { current: "hello" },
-                body: "Body content long enough for validation.",
+                body: [
+                  {
+                    _type: "block",
+                    _key: "b1",
+                    style: "normal",
+                    children: [{ _type: "span", _key: "s1", text: "hi", marks: [] }],
+                  },
+                ],
                 author: { _type: "reference", _ref: "author-jane" },
               },
             },
@@ -441,7 +448,14 @@ describe("validation on publish", () => {
                 _type: "post",
                 title: "Valid Post",
                 slug: { current: "valid-post" },
-                body: "Long enough body content.",
+                body: [
+                  {
+                    _type: "block",
+                    _key: "b1",
+                    style: "normal",
+                    children: [{ _type: "span", _key: "s1", text: "hi", marks: [] }],
+                  },
+                ],
                 author: { _type: "reference", _ref: "author-jane" },
               },
             },
@@ -469,5 +483,41 @@ describe("CORS", () => {
       env,
     )
     expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000")
+  })
+})
+
+describe("GET /v1/schema/:dataset", () => {
+  test("404 when no schema mirror exists", async () => {
+    const env = makeEnv()
+    const res = await app.fetch(new Request("http://api/v1/schema/test"), env)
+    expect(res.status).toBe(404)
+  })
+
+  test("returns the mirrored schema after createOrReplace of system.schema", async () => {
+    const env = makeEnv()
+    // Push a minimal schema doc
+    const mirror = {
+      _id: "system.schema",
+      _type: "system.schema",
+      types: [{ name: "post", title: "Post", type: "document", fields: [] }],
+      routes: [{ pattern: "/posts/:slug", type: "post" }],
+    }
+    await app.fetch(
+      new Request("http://api/v1/data/mutate/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mutations: [{ createOrReplace: mirror }] }),
+      }),
+      env,
+    )
+
+    const res = await app.fetch(new Request("http://api/v1/schema/test"), env)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { types: { name: string }[]; routes: { pattern: string }[] }
+    expect(body.types.map((t) => t.name)).toEqual(["post"])
+    expect(body.routes.map((r) => r.pattern)).toEqual(["/posts/:slug"])
+    // Internal fields are stripped
+    expect(body).not.toHaveProperty("_id")
+    expect(body).not.toHaveProperty("_rev")
   })
 })

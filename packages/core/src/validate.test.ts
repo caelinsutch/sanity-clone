@@ -126,3 +126,101 @@ describe("validateDocument", () => {
     expect(paths).toContain("rating")
   })
 })
+
+describe("validateDocument — arrays and nested objects", () => {
+  const withArrayType = defineType({
+    name: "listy",
+    title: "Listy",
+    type: "document",
+    fields: [
+      defineField({
+        name: "tags",
+        title: "Tags",
+        type: "array",
+        of: [{ name: "tag", title: "Tag", type: "string" }],
+        validation: { required: true, min: 1, max: 5 },
+      }),
+      defineField({
+        name: "features",
+        title: "Features",
+        type: "array",
+        of: [
+          {
+            name: "feature",
+            title: "Feature",
+            type: "object",
+            typeName: "feature",
+            fields: [
+              defineField({
+                name: "title",
+                title: "Title",
+                type: "string",
+                validation: { required: true, max: 20 },
+              }),
+            ],
+          },
+        ],
+      }),
+    ],
+  })
+
+  test("required array with no items fails", () => {
+    const issues = validateDocument(withArrayType, {})
+    expect(issues.find((i) => i.path === "tags")).toBeDefined()
+  })
+
+  test("min/max on array length", () => {
+    const tooMany = validateDocument(withArrayType, {
+      tags: ["a", "b", "c", "d", "e", "f"],
+    })
+    expect(tooMany.find((i) => i.path === "tags")?.message).toContain("at most 5")
+  })
+
+  test("validation recurses into items when array.of is a single object type", () => {
+    const issues = validateDocument(withArrayType, {
+      tags: ["ok"],
+      features: [
+        { _type: "feature", _key: "a", title: "Fine" },
+        { _type: "feature", _key: "b", title: "This one is way too long for the 20-char limit" },
+      ],
+    })
+    // The second item's title field exceeds max:20 → nested validation error
+    const nested = issues.find((i) => i.path.startsWith("features[1]"))
+    expect(nested).toBeDefined()
+  })
+})
+
+describe("validateDocument — blockContent (Portable Text)", () => {
+  const richType = defineType({
+    name: "page",
+    title: "Page",
+    type: "document",
+    fields: [
+      defineField({
+        name: "body",
+        title: "Body",
+        type: "blockContent",
+        validation: { required: true, min: 1 },
+      }),
+    ],
+  })
+
+  test("required blockContent with no blocks fails", () => {
+    const issues = validateDocument(richType, {})
+    expect(issues.find((i) => i.path === "body")?.message).toContain("required")
+  })
+
+  test("required blockContent with empty array fails", () => {
+    const issues = validateDocument(richType, { body: [] })
+    expect(issues.find((i) => i.path === "body")).toBeDefined()
+  })
+
+  test("blockContent with at least one block passes required", () => {
+    const issues = validateDocument(richType, {
+      body: [
+        { _type: "block", _key: "b1", style: "normal", children: [] },
+      ],
+    })
+    expect(issues).toEqual([])
+  })
+})

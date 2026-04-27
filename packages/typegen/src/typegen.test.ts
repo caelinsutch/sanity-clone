@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { emitSchemaTypes, inferQueryType } from "@repo/typegen"
-import { defineField, defineSchema, defineType } from "@repo/core/schema"
+import { defineField, defineInlineType, defineSchema, defineType } from "@repo/core/schema"
 
 const schema = defineSchema({
   types: [
@@ -19,6 +19,34 @@ const schema = defineSchema({
         defineField({ name: "slug", title: "Slug", type: "slug" }),
         defineField({ name: "published", title: "Published", type: "boolean" }),
         defineField({ name: "author", title: "Author", type: "reference", to: ["author"] }),
+      ],
+    }),
+    defineType({
+      name: "page",
+      title: "Page",
+      type: "document",
+      fields: [
+        defineField({ name: "title", title: "Title", type: "string" }),
+        defineField({
+          name: "slices",
+          title: "Slices",
+          type: "array",
+          of: [
+            defineInlineType({
+              typeName: "heroSlice",
+              title: "Hero",
+              fields: [
+                defineField({ name: "heading", title: "Heading", type: "string" }),
+                defineField({ name: "ctaHref", title: "CTA URL", type: "url" }),
+              ],
+            }),
+            defineInlineType({
+              typeName: "ctaSlice",
+              title: "CTA",
+              fields: [defineField({ name: "label", title: "Label", type: "string" })],
+            }),
+          ],
+        }),
       ],
     }),
   ],
@@ -99,5 +127,27 @@ describe("inferQueryType", () => {
 
   test("| order(...) doesn't change type shape", () => {
     expect(inferQueryType('*[_type == "post"] | order(title asc)', schema)).toBe("Post[]")
+  })
+})
+
+describe("emitSchemaTypes — inline types + slices", () => {
+  test("emits discriminated _type + _key in array.of union members", () => {
+    const out = emitSchemaTypes(schema, { includeHeader: false })
+    // The Page.slices field should include each slice with its discriminator
+    expect(out).toContain('_type: "heroSlice"; _key: string')
+    expect(out).toContain('_type: "ctaSlice"; _key: string')
+  })
+
+  test("emits named aliases for every inline object type in the schema", () => {
+    const out = emitSchemaTypes(schema, { includeHeader: false })
+    expect(out).toContain("export interface HeroSlice {")
+    expect(out).toContain("export interface CtaSlice {")
+    // Each alias carries its own `_type` literal
+    expect(out).toMatch(/export interface HeroSlice \{[^}]*_type: "heroSlice"/s)
+  })
+
+  test("named aliases include all declared fields", () => {
+    const out = emitSchemaTypes(schema, { includeHeader: false })
+    expect(out).toMatch(/export interface HeroSlice \{[^}]*heading\?: string[^}]*ctaHref\?: string/s)
   })
 })
