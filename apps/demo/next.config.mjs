@@ -8,7 +8,7 @@ const nextConfig = {
   transpilePackages: ["@repo/core", "@repo/client", "@repo/visual-editing", "@repo/comlink", "@repo/next", "@repo/schema"],
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787",
-    NEXT_PUBLIC_DATASET: process.env.NEXT_PUBLIC_DATASET ?? "production",
+    NEXT_PUBLIC_DATASET: process.env.NEXT_PUBLIC_DATASET ?? "next-blog",
     NEXT_PUBLIC_STUDIO_URL: STUDIO_URL,
   },
   async headers() {

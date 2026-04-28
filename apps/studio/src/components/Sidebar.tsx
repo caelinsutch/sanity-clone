@@ -1,6 +1,6 @@
 "use client"
 
-import { schema } from "@repo/schema"
+import { useProject } from "@/lib/project-context"
 
 export function Sidebar({
   selectedType,
@@ -9,6 +9,7 @@ export function Sidebar({
   selectedType: string
   onSelectType: (t: string) => void
 }) {
+  const { project } = useProject()
   return (
     <div
       style={{
@@ -28,7 +29,7 @@ export function Sidebar({
       >
         Content
       </div>
-      {schema.types.map((t) => (
+      {project.schema.types.map((t) => (
         <button
           key={t.name}
           onClick={() => onSelectType(t.name)}

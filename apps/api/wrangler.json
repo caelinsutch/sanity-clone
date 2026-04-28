@@ -14,9 +14,24 @@
   ],
   "vars": {
     "ADMIN_TOKEN": "dev-admin-token",
-    "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:3333",
-    "REVALIDATE_WEBHOOKS": "http://localhost:3000/api/revalidate",
+    "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:3001,http://localhost:3333",
+    "REVALIDATE_WEBHOOKS": "next-blog=http://localhost:3000/api/revalidate,astro-blog=http://localhost:3001/api/revalidate",
     "REVALIDATE_SECRET": "dev-revalidate-secret"
+  },
+  "env": {
+    "production": {
+      "name": "sanity-clone-api",
+      "kv_namespaces": [
+        {
+          "binding": "CONTENT",
+          "id": "cacb8716fa9745259c9043583fa0727a"
+        }
+      ],
+      "vars": {
+        "ALLOWED_ORIGINS": "https://sanity-clone-demo.caelin-deb.workers.dev,https://sanity-clone-studio.caelin-deb.workers.dev,https://sanity-clone-astro-demo.caelin-deb.workers.dev",
+        "REVALIDATE_WEBHOOKS": "next-blog=https://sanity-clone-demo.caelin-deb.workers.dev/api/revalidate,astro-blog=https://sanity-clone-astro-demo.caelin-deb.workers.dev/api/revalidate"
+      }
+    }
   },
   "env": {
     "production": {

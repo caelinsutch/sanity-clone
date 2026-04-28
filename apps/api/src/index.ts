@@ -141,10 +141,27 @@ app.post("/v1/data/mutate/:dataset", async (c) => {
     // Drafts don't trigger revalidation because the published cache hasn't
     // actually changed; the preview iframe relies on draft-mode bypass + a
     // live refresh channel to see draft content.
-    const endpoints = (c.env.REVALIDATE_WEBHOOKS ?? "")
+    //
+    // `REVALIDATE_WEBHOOKS` format:
+    //   - Entries are comma-separated.
+    //   - Each entry is `<dataset>=<url>` to target a specific dataset, or
+    //     just `<url>` for a legacy global webhook.
+    //   - Multiple entries per dataset are allowed (fan-out).
+    //
+    // Example for two projects:
+    //   "next-blog=https://demo-next/api/revalidate,astro-blog=https://demo-astro/api/revalidate"
+    const endpointEntries = (c.env.REVALIDATE_WEBHOOKS ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
+    const endpoints = endpointEntries
+      .map((entry) => {
+        const eq = entry.indexOf("=")
+        if (eq === -1) return { dataset: null as string | null, url: entry }
+        return { dataset: entry.slice(0, eq), url: entry.slice(eq + 1) }
+      })
+      .filter((e) => e.dataset === null || e.dataset === dataset)
+      .map((e) => e.url)
     if (endpoints.length) {
       const tagSet = new Set<string>()
       for (const r of result.results) {
@@ -159,7 +176,7 @@ app.post("/v1/data/mutate/:dataset", async (c) => {
       }
       const tags = [...tagSet]
       if (tags.length) {
-        const payload = JSON.stringify({ tags })
+        const payload = JSON.stringify({ dataset, tags })
         const headers = {
           "content-type": "application/json",
           authorization: `Bearer ${c.env.REVALIDATE_SECRET ?? ""}`,

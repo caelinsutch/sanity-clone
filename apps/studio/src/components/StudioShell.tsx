@@ -1,46 +1,52 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { schema } from "@repo/schema"
+import Link from "next/link"
 import { getTypeDef } from "@repo/core/schema"
 import { publishedId } from "@repo/core"
 import { Sidebar } from "./Sidebar"
 import { DocumentEditor } from "./DocumentEditor"
 import { LivePreview } from "./LivePreview"
 import { useDocuments } from "@/lib/docs"
-import { studioClient } from "@/lib/client"
+import { useProject } from "@/lib/project-context"
 import { resolveDocumentFromPath } from "@/lib/routes"
 
 /**
- * The whole studio is a single side-by-side layout:
+ * The whole studio is a single side-by-side layout, scoped to the current
+ * project taken from ProjectContext:
  *
  *   ┌───────┬────────────┬────────────────┬──────────────────┐
  *   │ types │ doc list   │ editor form    │  live preview    │
  *   └───────┴────────────┴────────────────┴──────────────────┘
  *
- * Two-way binding between the editor + iframe:
- *   - Selecting a doc in the form → iframe navigates to `locations()[0].href`.
- *   - Iframe navigates to a URL → the Studio matches the schema's `routes`
- *     and auto-opens the owning document in the editor.
+ * Two-way binding between the editor + iframe is driven by the project's
+ * schema `routes` + each doc's `locations`.
  */
 export function StudioShell() {
+  const { project, client } = useProject()
   const [showPreview, setShowPreview] = useState(true)
-  const [selectedType, setSelectedType] = useState<string>(schema.types[0]!.name)
+  const [selectedType, setSelectedType] = useState<string>(project.schema.types[0]!.name)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [previewPath, setPreviewPath] = useState<string>("/")
+
+  // Reset type selection when the project changes.
+  useEffect(() => {
+    setSelectedType(project.schema.types[0]!.name)
+    setSelectedId(null)
+    setPreviewPath("/")
+  }, [project.id])
 
   // When a document is selected, resolve its `locations()` to set the iframe URL.
   useEffect(() => {
     if (!selectedId) return
     let cancelled = false
     ;(async () => {
-      const typeDef = getTypeDef(schema, selectedType)
+      const typeDef = getTypeDef(project.schema, selectedType)
       if (!typeDef?.locations) return
-      // We need the doc itself to compute locations — fetch the draft/published pair.
       const pid = publishedId(selectedId)
       const doc =
-        (await studioClient.getDocument(`drafts.${pid}`)) ??
-        (await studioClient.getDocument(pid))
+        (await client.getDocument(`drafts.${pid}`)) ??
+        (await client.getDocument(pid))
       if (cancelled || !doc) return
       const locs = typeDef.locations(doc as unknown as Record<string, unknown>)
       if (locs.length === 0) return
@@ -49,10 +55,8 @@ export function StudioShell() {
     return () => {
       cancelled = true
     }
-  }, [selectedId, selectedType])
+  }, [selectedId, selectedType, client, project])
 
-  // Listen for focus events posted by (1) the live preview iframe via
-  // Comlink (stega click-to-edit), or (2) the `/intent/edit/...` route.
   useEffect(() => {
     const handler = (ev: MessageEvent) => {
       const d = ev.data
@@ -67,9 +71,8 @@ export function StudioShell() {
     return () => window.removeEventListener("message", handler)
   }, [])
 
-  // When the iframe navigates to a new path, try to resolve the owning doc.
   async function onIframeNavigate(pathname: string) {
-    const resolved = await resolveDocumentFromPath(pathname)
+    const resolved = await resolveDocumentFromPath(project, client, pathname)
     if (resolved) {
       setSelectedType(resolved.type)
       setSelectedId(resolved.documentId)
@@ -122,6 +125,7 @@ function Topbar({
   showPreview: boolean
   setShowPreview: (b: boolean) => void
 }) {
+  const { project } = useProject()
   return (
     <div
       style={{
@@ -133,8 +137,45 @@ function Topbar({
         gap: 12,
       }}
     >
-      <div style={{ fontWeight: 600, letterSpacing: -0.2 }}>sanity-clone studio</div>
+      <Link
+        href="/"
+        style={{
+          fontWeight: 600,
+          letterSpacing: -0.2,
+          color: "inherit",
+          textDecoration: "none",
+        }}
+      >
+        sanity-clone studio
+      </Link>
+      <span style={{ color: "var(--muted)" }}>/</span>
+      <span style={{ fontWeight: 500 }}>{project.name}</span>
+      <span
+        style={{
+          padding: "2px 6px",
+          background: "var(--panel-2)",
+          borderRadius: 3,
+          fontSize: 10,
+          fontFamily: "var(--mono)",
+          color: "var(--muted)",
+        }}
+      >
+        {project.dataset}
+      </span>
       <div style={{ flex: 1 }} />
+      <Link
+        href="/"
+        style={{
+          color: "var(--muted)",
+          fontSize: 13,
+          textDecoration: "none",
+          padding: "4px 10px",
+          borderRadius: 6,
+          border: "1px solid var(--border)",
+        }}
+      >
+        Switch project
+      </Link>
       <button
         onClick={() => setShowPreview(!showPreview)}
         style={{
@@ -160,7 +201,8 @@ function DocumentList({
   selectedId: string | null
   onSelect: (id: string) => void
 }) {
-  const { docs } = useDocuments(type)
+  const { project, client } = useProject()
+  const { docs } = useDocuments(client, project.dataset, type)
   return (
     <div
       style={{

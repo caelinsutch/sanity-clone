@@ -40,6 +40,11 @@ export interface AstroCmsConfig {
   apiUrl: string
   dataset: string
   studioUrl: string
+  /**
+   * Optional project id. Forwarded to the client so stega intent URLs
+   * target the correct project workspace in the Studio.
+   */
+  projectId?: string
   /** Server-only read token used when in draft mode. */
   token?: string
   /** Shared secret the API webhook must include. */
@@ -98,6 +103,7 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
+      projectId: config.projectId,
       perspective: draft ? "drafts" : "published",
       token: draft ? config.token : undefined,
       stega: { enabled: draft, studioUrl: config.studioUrl },
@@ -109,6 +115,7 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
+      projectId: config.projectId,
       perspective: "published",
       stega: { enabled: false, studioUrl: config.studioUrl },
       fetcher: resolveFetcher(ctx),

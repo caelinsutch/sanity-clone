@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { FieldDef } from "@repo/core/schema"
+import { useEffect, useRef, useState } from "react"
 import { getTypeDef } from "@repo/core/schema"
 import { validateDocument, type ValidationIssue } from "@repo/core/validate"
 import { draftId, isDraftId, publishedId, type SanityDocument } from "@repo/core"
-import { schema } from "@repo/schema"
-import { studioClient } from "@/lib/client"
+import type { SanityCloneClient } from "@repo/client"
+import { useProject } from "@/lib/project-context"
+import { API_URL } from "@/lib/client"
 import { emitLocalMutation } from "@/lib/local-mutations"
 import { FieldRenderer } from "./FieldRenderer"
 
@@ -16,23 +16,28 @@ interface Props {
   onDelete: () => void
 }
 
-// Returns `{ draftDoc, publishedDoc }` for a given id (either form).
-async function loadPair(id: string): Promise<{ draft: SanityDocument | null; published: SanityDocument | null }> {
+async function loadPair(
+  client: SanityCloneClient,
+  id: string,
+): Promise<{ draft: SanityDocument | null; published: SanityDocument | null }> {
   const pid = publishedId(id)
   const did = draftId(id)
-  const [draft, published] = await Promise.all([studioClient.getDocument(did), studioClient.getDocument(pid)])
+  const [draft, published] = await Promise.all([
+    client.getDocument(did),
+    client.getDocument(pid),
+  ])
   return { draft, published }
 }
 
 export function DocumentEditor({ type, id, onDelete }: Props) {
-  const typeDef = getTypeDef(schema, type)
+  const { project, client } = useProject()
+  const typeDef = getTypeDef(project.schema, type)
   const [doc, setDoc] = useState<SanityDocument | null>(null)
   const [published, setPublished] = useState<SanityDocument | null>(null)
   const [loading, setLoading] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const focusPathRef = useRef<string | null>(null)
 
-  // Load on id change
   useEffect(() => {
     if (!id) {
       setDoc(null)
@@ -41,12 +46,11 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
     }
     setLoading(true)
     const pid = publishedId(id)
-    loadPair(pid).then(({ draft, published }) => {
+    loadPair(client, pid).then(({ draft, published }) => {
       setPublished(published)
       if (draft) setDoc(draft)
       else if (published) setDoc({ ...published, _id: draftId(pid) })
       else {
-        // New empty doc
         setDoc({
           _id: draftId(pid),
           _type: type,
@@ -57,9 +61,8 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
       }
       setLoading(false)
     })
-  }, [id, type])
+  }, [id, type, client])
 
-  // Listen for focus requests from visual editing
   useEffect(() => {
     const h = (ev: MessageEvent) => {
       const d = ev.data
@@ -78,9 +81,8 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
   async function save(next: SanityDocument) {
     setSaveStatus("saving")
     try {
-      // Always write to the draft id
       const did = draftId(next._id)
-      await studioClient.mutate([{ createOrReplace: { ...next, _id: did } }])
+      await client.mutate([{ createOrReplace: { ...next, _id: did } }])
       emitLocalMutation()
       setSaveStatus("saved")
       setTimeout(() => setSaveStatus("idle"), 800)
@@ -90,7 +92,6 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
     }
   }
 
-  // Debounced save
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   function scheduleSave(next: SanityDocument) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -116,23 +117,22 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
     if (!doc) return
     await save(doc)
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/v1/data/publish/${process.env.NEXT_PUBLIC_DATASET}/${publishedId(doc._id)}`,
-      { method: "POST", headers: { authorization: `Bearer dev-admin-token` } },
+      `${API_URL}/v1/data/publish/${project.dataset}/${publishedId(doc._id)}`,
+      { method: "POST", headers: { authorization: `Bearer ${client.config.token ?? ""}` } },
     )
     if (!res.ok) {
       alert(`Publish failed: ${await res.text()}`)
       return
     }
     emitLocalMutation()
-    // Reload pair
-    const { draft, published } = await loadPair(publishedId(doc._id))
+    const { draft, published } = await loadPair(client, publishedId(doc._id))
     setPublished(published)
     setDoc(draft ?? published)
   }
 
   async function discardDraft() {
     if (!doc) return
-    await studioClient.mutate([{ delete: { id: draftId(doc._id) } }])
+    await client.mutate([{ delete: { id: draftId(doc._id) } }])
     emitLocalMutation()
     if (published) setDoc({ ...published, _id: draftId(published._id) })
     else {
@@ -145,7 +145,7 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
     if (!doc) return
     if (!confirm("Delete this document (draft and published)?")) return
     const pid = publishedId(doc._id)
-    await studioClient.mutate([{ delete: { id: pid } }, { delete: { id: draftId(pid) } }])
+    await client.mutate([{ delete: { id: pid } }, { delete: { id: draftId(pid) } }])
     emitLocalMutation()
     onDelete()
   }
@@ -158,8 +158,6 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
 
   const hasDraft = isDraftId(doc._id) && !!doc._createdAt
 
-  // Compute validation issues for the current doc state. The Publish button
-  // is disabled if there are any errors.
   const issues = typeDef
     ? validateDocument(typeDef, doc as unknown as Record<string, unknown>)
     : []
@@ -262,4 +260,3 @@ function SaveIndicator({ status }: { status: "idle" | "saving" | "saved" | "erro
     </span>
   )
 }
-

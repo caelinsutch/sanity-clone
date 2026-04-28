@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { DATASET, API_URL, studioClient } from "@/lib/client"
+import { API_URL } from "@/lib/client"
+import { useProject } from "@/lib/project-context"
 
 interface Option {
   _id: string
@@ -34,6 +35,7 @@ export function ReferencePicker({
   onChange: (next: { _type: "reference"; _ref: string } | null) => void
   readOnly?: boolean
 }) {
+  const { project, client } = useProject()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [options, setOptions] = useState<Option[]>([])
@@ -58,12 +60,12 @@ export function ReferencePicker({
     ;(async () => {
       const allOpts: Option[] = []
       for (const type of allowedTypes) {
-        const url = new URL(`/v1/data/list/${DATASET}`, API_URL)
+        const url = new URL(`/v1/data/list/${project.dataset}`, API_URL)
         url.searchParams.set("perspective", "drafts")
         url.searchParams.set("type", type)
         try {
           const res = await fetch(url.toString(), {
-            headers: { authorization: `Bearer ${studioClient.config.token ?? ""}` },
+            headers: { authorization: `Bearer ${client.config.token ?? ""}` },
           })
           const body = (await res.json()) as { documents: Option[] }
           allOpts.push(...body.documents)
@@ -79,7 +81,7 @@ export function ReferencePicker({
     return () => {
       cancelled = true
     }
-  }, [open, loaded, allowedTypes])
+  }, [open, loaded, allowedTypes, project.dataset, client])
 
   // Resolve selected _ref → title
   useEffect(() => {
@@ -98,7 +100,7 @@ export function ReferencePicker({
     let cancelled = false
     ;(async () => {
       try {
-        const doc = await studioClient.getDocument(ref)
+        const doc = await client.getDocument(ref)
         if (cancelled) return
         if (doc) {
           const d = doc as Record<string, unknown>

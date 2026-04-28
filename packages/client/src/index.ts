@@ -19,6 +19,12 @@ export interface ClientConfig {
   /** Base URL of the API, e.g. http://localhost:8787 */
   apiUrl: string
   dataset: string
+  /**
+   * Optional project id. When set, stega intent URLs point at
+   * `${studioUrl}/${projectId}/intent/...` so a multi-project Studio
+   * opens the correct workspace.
+   */
+  projectId?: string
   /** Auth token, required for drafts / mutations. */
   token?: string
   useCdn?: boolean
@@ -90,6 +96,7 @@ export class SanityCloneClient {
     if (stegaOn && body.resultSourceMap && this.config.stega?.studioUrl) {
       result = encodeResultWithCsm(result, body.resultSourceMap, {
         studioUrl: this.config.stega.studioUrl,
+        projectId: this.config.projectId,
         filter: this.config.stega?.filter,
       })
     }

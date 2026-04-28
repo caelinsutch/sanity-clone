@@ -19,6 +19,12 @@ export interface CmsConfig {
   apiUrl: string
   dataset: string
   studioUrl: string
+  /**
+   * Optional project id. Forwarded to the client so stega intent URLs
+   * open the correct project workspace in the Studio (e.g.,
+   * `${studioUrl}/${projectId}/intent/...`).
+   */
+  projectId?: string
   /** Server-only read token used when in draft mode. */
   token?: string
   /** Shared secret that the CMS API must include when calling the revalidation webhook. */
@@ -104,6 +110,7 @@ export function defineCms(config: CmsConfig): ConfiguredCms {
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
+      projectId: config.projectId,
       perspective: isEnabled ? "drafts" : "published",
       token: isEnabled ? config.token : undefined,
       stega: { enabled: isEnabled, studioUrl: config.studioUrl },
@@ -116,6 +123,7 @@ export function defineCms(config: CmsConfig): ConfiguredCms {
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
+      projectId: config.projectId,
       perspective: "published",
       stega: { enabled: false, studioUrl: config.studioUrl },
       fetcher,

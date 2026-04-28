@@ -20,9 +20,10 @@ scoped down to what fits in a weekend of reading the source.
 - **SSG + ISR + on-demand revalidation** on the consumer site — new-slug drafts
   preview without 404s because of dynamic-params fallback
 - **Two-way Studio ↔ preview binding** driven by schema-declared routes + locations
+- **Multi-project Studio** — one dashboard, many projects. Each project has its
+  own dataset, its own schema (if you want), and its own preview target.
+  URL shape: `/` is the picker, `/:projectId` opens that project's workspace.
 - **Framework-agnostic integration** — first-class packages for Next.js and Astro.
-  The Studio's preview pane can render the same dataset through both side-by-side
-  to prove the CMS isn't tied to a single framework.
 - **One-call integration** for new Next.js sites via `defineCms()` (or
   `defineAstroCms()` for Astro)
 
@@ -32,23 +33,25 @@ scoped down to what fits in a weekend of reading the source.
 apps/
   api            Hono on Cloudflare Workers KV — the "Content Lake"
                  Endpoints: query, mutate, doc, listen (SSE), publish, seed
-                 Fires revalidation webhooks to all consumer sites on every mutation
+                 Per-dataset revalidation webhooks fired on every mutation
   studio         Next.js authoring dashboard
-                 Unified 4-column layout: types · documents · editor · live preview
-                 Preview pane can split between Next.js and Astro demos side-by-side
-  demo           Next.js consumer blog using @repo/next for integration
+                 /           → project picker
+                 /:projectId → four-pane shell (types · docs · editor · preview)
+                 Preview iframe is bidirectionally bound to the editor
+  demo           Next.js consumer blog — the `next-blog` project
                  SSG with dynamicParams for new-slug preview
-  demo-astro     Astro consumer blog using @repo/astro — same CMS, different stack
+  demo-astro     Astro consumer blog — the `astro-blog` project
 
 packages/
   core           Types (documents, mutations, perspectives, CSM) + GROQ parser + executor + validator
   client         Sanity-style HTTP client with stega encoding + CSM + Next cache hints
                  Takes an optional `fetcher` so apps on Cloudflare Workers can
                  route through a service binding instead of the public URL
+                 Accepts `projectId` so stega intent URLs target the right workspace
   comlink        Typed postMessage protocol: Studio ↔ iframe
   visual-editing DOM overlay scanner + click-to-edit runtime
-  schema         Example content schema — post, author, siteSettings, page (with slices)
-                 Declares `routes` (URL → doc) and `locations` (doc → URL)
+  schema         Example content schema + `./projects` registry.
+                 Projects list: id, name, schema ref, dataset, demo URL.
   next           Framework integration: defineCms() returns draft client,
                  sanityFetch, route handlers, VisualEditingBridge, staticParamsFor
   astro          Framework integration: defineAstroCms() for Astro consumers —
@@ -78,11 +81,11 @@ A live deployment on Cloudflare Workers is running at:
 
 - **API** — https://sanity-clone-api.caelin-deb.workers.dev
 - **Studio** — https://sanity-clone-studio.caelin-deb.workers.dev
-- **Demo (Next.js)** — https://sanity-clone-demo.caelin-deb.workers.dev
-- **Demo (Astro)** — https://sanity-clone-astro-demo.caelin-deb.workers.dev
+- **Next demo** — https://sanity-clone-demo.caelin-deb.workers.dev
+- **Astro demo** — https://sanity-clone-astro-demo.caelin-deb.workers.dev
 
-The Studio's preview pane has a `split` toggle — open it to see both demos
-rendering the same dataset side-by-side.
+The Studio opens on a project picker. Pick **Next.js blog** or **Astro blog**
+to enter that project's workspace. Each project has its own isolated dataset.
 
 See [DEPLOY.md](./DEPLOY.md) for how to stand up your own.
 

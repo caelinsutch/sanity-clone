@@ -77,6 +77,12 @@ import type { ContentSourceMap } from "@repo/core/csm"
 
 export interface StegaOptions {
   studioUrl: string
+  /**
+   * Optional project id. When set, intent URLs are scoped to that project
+   * (`${studioUrl}/${projectId}/intent/edit/...`) so the Studio's project
+   * picker knows which workspace to open.
+   */
+  projectId?: string
   /** Return false to skip encoding a given value. */
   filter?: (props: {
     value: string
@@ -134,7 +140,13 @@ function defaultFilter(props: { value: string; sourcePath: string }): boolean {
   return true
 }
 
-function buildIntentUrl(studioUrl: string, docId: string, type: string, path: string): string {
+function buildIntentUrl(
+  studioUrl: string,
+  docId: string,
+  type: string,
+  path: string,
+  projectId: string | undefined,
+): string {
   // Map CSM path `$['author']['name']` -> Studio path `author.name`
   const clean = path.replace(/^\$/, "").replace(/\[(\d+)\]/g, "[$1]")
   const parts: string[] = []
@@ -146,7 +158,8 @@ function buildIntentUrl(studioUrl: string, docId: string, type: string, path: st
   }
   const studioPath = parts.join(".")
   const id = docId.replace(/^drafts\./, "")
-  return `${studioUrl.replace(/\/$/, "")}/intent/edit/mode=presentation;id=${id};type=${type};path=${encodeURIComponent(
+  const base = studioUrl.replace(/\/$/, "") + (projectId ? `/${projectId}` : "")
+  return `${base}/intent/edit/mode=presentation;id=${id};type=${type};path=${encodeURIComponent(
     studioPath,
   )}`
 }
@@ -156,7 +169,7 @@ function buildIntentUrl(studioUrl: string, docId: string, type: string, path: st
  * every string traced to a document field gets an invisible stega suffix.
  */
 export function encodeResultWithCsm<T>(result: T, csm: ContentSourceMap, options: StegaOptions): T {
-  const { studioUrl, filter } = options
+  const { studioUrl, filter, projectId } = options
 
   const walk = (value: unknown, resultPath: string): unknown => {
     if (typeof value === "string") {
@@ -175,7 +188,7 @@ export function encodeResultWithCsm<T>(result: T, csm: ContentSourceMap, options
         ? filter({ ...props, filterDefault: defaultFilter })
         : defaultFilter(props)
       if (!keep) return value
-      const href = buildIntentUrl(studioUrl, sourceDoc._id, sourceDoc._type, sourcePath)
+      const href = buildIntentUrl(studioUrl, sourceDoc._id, sourceDoc._type, sourcePath, projectId)
       const payload = JSON.stringify({ origin: "sanity.io", href })
       return value + encodePayload(payload)
     }
