@@ -1,0 +1,11 @@
+---
+import type { CtaSlice } from "../../generated"
+interface Props { slice: CtaSlice }
+const { slice } = Astro.props
+---
+<section class="slice slice-cta">
+  <h2>{slice.heading}</h2>
+  {slice.buttonLabel && slice.buttonHref ? (
+    <a href={slice.buttonHref} class="btn-primary">{slice.buttonLabel}</a>
+  ) : null}
+</section>

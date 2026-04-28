@@ -2,37 +2,172 @@
 
 import { useEffect, useRef, useState } from "react"
 import { createComlink, type ComlinkChannel } from "@repo/comlink"
-import { DEMO_URL } from "@/lib/client"
+import { PREVIEW_TARGETS, type PreviewTarget } from "@/lib/client"
 import { subscribeToMutations } from "@/lib/docs"
 import { onLocalMutation } from "@/lib/local-mutations"
 
+type Mode = "single" | "split"
+
 /**
- * Live preview iframe of the demo site, wired to the studio via Comlink.
+ * Live preview pane. When the monorepo ships more than one demo frontend
+ * (e.g., the Next.js and Astro demos), the Studio can either:
  *
- *  - Loads the demo through its `/api/draft/enable` endpoint so preview mode
- *    (drafts perspective + stega) is active in the iframe.
- *  - Forwards `visual-editing/focus` events from the iframe up to the
- *    Studio shell so clicking text focuses the matching doc + field.
- *  - Emits `visual-editing/navigated` events on every iframe navigation so
- *    the Studio can use the URL to auto-select the matching document.
- *  - When the `path` prop changes (because a different doc was selected in
- *    the editor), navigate the iframe to that path.
- *  - Listens to the API's mutation SSE stream and tells the iframe to
- *    `refresh` so the preview stays in sync with draft saves.
+ *   - "single" — one iframe, pick the target from a dropdown
+ *   - "split"  — one iframe per target, side-by-side or stacked
+ *
+ * Both modes share the same behaviour otherwise: each iframe is connected
+ * to the Studio via Comlink, forwards `visual-editing/focus` + `/navigated`
+ * events up, and listens for `presentation/refresh` on mutations.
+ *
+ * Choice is persisted in `localStorage`.
  */
 export function LivePreview({
   path,
   onNavigate,
 }: {
-  /** Path the iframe should be at. The Studio updates this when a doc is selected. */
   path: string
-  /** Fires when the iframe navigates on its own (link click, etc). */
   onNavigate?: (pathname: string) => void
 }) {
-  const [displayUrl, setDisplayUrl] = useState(`${DEMO_URL}${path}`)
+  const [mode, setMode] = useState<Mode>(() => {
+    if (typeof window === "undefined") return "single"
+    const stored = localStorage.getItem("previewMode")
+    if (stored === "single" || stored === "split") return stored
+    return PREVIEW_TARGETS.length > 1 ? "split" : "single"
+  })
+  const [singleTargetId, setSingleTargetId] = useState<string>(() => {
+    if (typeof window === "undefined") return PREVIEW_TARGETS[0]!.id
+    return localStorage.getItem("previewTargetId") ?? PREVIEW_TARGETS[0]!.id
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    localStorage.setItem("previewMode", mode)
+    localStorage.setItem("previewTargetId", singleTargetId)
+  }, [mode, singleTargetId])
+
+  const visibleTargets =
+    mode === "split"
+      ? PREVIEW_TARGETS
+      : [PREVIEW_TARGETS.find((t) => t.id === singleTargetId) ?? PREVIEW_TARGETS[0]!]
+
+  // Split layout: vertically stacked when narrow, side-by-side otherwise.
+  // We let the browser decide via `minmax`.
+  const splitColumns = `repeat(${visibleTargets.length}, minmax(0, 1fr))`
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateRows: "40px 1fr",
+        background: "var(--panel)",
+        minWidth: 0,
+        height: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "0 12px",
+          borderBottom: "1px solid var(--border)",
+          fontFamily: "var(--mono)",
+          fontSize: 11,
+          color: "var(--muted)",
+        }}
+      >
+        <span>Preview</span>
+        {PREVIEW_TARGETS.length > 1 ? (
+          <>
+            <ModeToggle mode={mode} setMode={setMode} />
+            {mode === "single" ? (
+              <select
+                value={singleTargetId}
+                onChange={(e) => setSingleTargetId(e.target.value)}
+                style={{
+                  fontFamily: "var(--mono)",
+                  fontSize: 11,
+                  padding: "4px 6px",
+                  background: "var(--panel-2)",
+                  color: "inherit",
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                }}
+              >
+                {PREVIEW_TARGETS.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: splitColumns,
+          minHeight: 0,
+        }}
+      >
+        {visibleTargets.map((t, i) => (
+          <PreviewPane
+            key={t.id}
+            target={t}
+            path={path}
+            onNavigate={onNavigate}
+            showBorder={i < visibleTargets.length - 1}
+            showLabel={mode === "split"}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
+  return (
+    <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
+      {(["single", "split"] as const).map((m) => (
+        <button
+          key={m}
+          onClick={() => setMode(m)}
+          style={{
+            padding: "4px 8px",
+            fontSize: 11,
+            fontFamily: "var(--mono)",
+            background: mode === m ? "var(--panel-2)" : "transparent",
+            color: mode === m ? "inherit" : "var(--muted)",
+            border: "none",
+            borderLeft: m === "split" ? "1px solid var(--border)" : "none",
+            cursor: "pointer",
+          }}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PreviewPane({
+  target,
+  path,
+  onNavigate,
+  showBorder,
+  showLabel,
+}: {
+  target: PreviewTarget
+  path: string
+  onNavigate?: (pathname: string) => void
+  showBorder: boolean
+  showLabel: boolean
+}) {
+  const demoUrl = target.url
+  const [displayUrl, setDisplayUrl] = useState(`${demoUrl}${path}`)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const comlinkRef = useRef<ComlinkChannel | null>(null)
-  // Track the path the iframe is currently on so we don't re-navigate to it.
   const currentPathRef = useRef<string>(path)
 
   useEffect(() => {
@@ -72,26 +207,22 @@ export function LivePreview({
       comlinkRef.current?.destroy()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [demoUrl])
 
-  // Ask the iframe to navigate when the incoming `path` changes.
+  // Navigate the iframe when the path prop changes.
   useEffect(() => {
     if (!path) return
     if (currentPathRef.current === path) return
     const link = comlinkRef.current
     if (link) {
-      link.send("presentation/navigate", { type: "push", url: `${DEMO_URL}${path}` })
+      link.send("presentation/navigate", { type: "push", url: `${demoUrl}${path}` })
     } else if (iframeRef.current) {
-      // Not yet connected (first load) — just set src.
-      iframeRef.current.src = `${DEMO_URL}/api/draft/enable?redirect=${encodeURIComponent(path)}`
+      iframeRef.current.src = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path)}`
     }
     currentPathRef.current = path
-  }, [path])
+  }, [path, demoUrl])
 
-  // Refresh the iframe when a mutation occurs — from either the API's SSE
-  // stream (covers external/background changes) or the Studio's own local
-  // event bus (reliable + instant for edits made in this tab; doesn't rely
-  // on Cloudflare KV propagation between POPs).
+  // Refresh on mutations (both SSE and local event bus).
   useEffect(() => {
     const fire = () => comlinkRef.current?.send("presentation/refresh", { source: "mutation" })
     const unsubSse = subscribeToMutations(fire)
@@ -102,42 +233,55 @@ export function LivePreview({
     }
   }, [])
 
-  const initialSrc = `${DEMO_URL}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`
+  const initialSrc = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateRows: "40px 1fr",
-        background: "var(--panel)",
+        gridTemplateRows: "32px 1fr",
         minWidth: 0,
-        height: "100%",
+        minHeight: 0,
+        borderRight: showBorder ? "1px solid var(--border)" : "none",
       }}
     >
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          padding: "0 12px",
+          gap: 6,
+          padding: "0 10px",
           borderBottom: "1px solid var(--border)",
           fontFamily: "var(--mono)",
-          fontSize: 11,
+          fontSize: 10,
           color: "var(--muted)",
+          background: "var(--panel)",
         }}
       >
-        <span>Preview</span>
+        {showLabel ? (
+          <span
+            style={{
+              padding: "2px 6px",
+              background: "var(--panel-2)",
+              borderRadius: 3,
+              color: "inherit",
+              fontSize: 10,
+            }}
+          >
+            {target.label}
+          </span>
+        ) : null}
         <input
           value={displayUrl}
           onChange={(e) => setDisplayUrl(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && iframeRef.current) iframeRef.current.src = displayUrl
           }}
-          style={{ flex: 1, padding: "6px 10px", fontSize: 11 }}
+          style={{ flex: 1, padding: "4px 8px", fontSize: 10 }}
         />
         <button
           className="btn secondary"
-          style={{ padding: "4px 10px", fontSize: 11 }}
+          style={{ padding: "2px 8px", fontSize: 10 }}
           onClick={() => {
             if (iframeRef.current) iframeRef.current.src = displayUrl
           }}

@@ -1,0 +1,26 @@
+---
+import type { Page } from "../generated"
+import Hero from "./slices/Hero.astro"
+import FeatureGrid from "./slices/FeatureGrid.astro"
+import Cta from "./slices/Cta.astro"
+import RichText from "./slices/RichText.astro"
+
+type Slice = NonNullable<Page["slices"]>[number]
+
+interface Props { slices: Page["slices"] | null | undefined }
+const { slices } = Astro.props
+---
+{(slices ?? []).map((slice: Slice) => {
+  switch (slice._type) {
+    case "heroSlice": return <Hero slice={slice} />
+    case "featureGridSlice": return <FeatureGrid slice={slice} />
+    case "ctaSlice": return <Cta slice={slice} />
+    case "richTextSlice": return <RichText slice={slice} />
+    default: {
+      // Exhaustive check — adding a new slice type in the schema forces this
+      // branch to narrow to `never`, surfacing the missing component at build.
+      const _exhaustive: never = slice
+      return null
+    }
+  }
+})}

@@ -28,8 +28,8 @@
         }
       ],
       "vars": {
-        "ALLOWED_ORIGINS": "https://sanity-clone-demo.caelin-deb.workers.dev,https://sanity-clone-studio.caelin-deb.workers.dev",
-        "REVALIDATE_WEBHOOKS": "https://sanity-clone-demo.caelin-deb.workers.dev/api/revalidate"
+        "ALLOWED_ORIGINS": "https://sanity-clone-demo.caelin-deb.workers.dev,https://sanity-clone-studio.caelin-deb.workers.dev,https://sanity-clone-astro-demo.caelin-deb.workers.dev",
+        "REVALIDATE_WEBHOOKS": "https://sanity-clone-demo.caelin-deb.workers.dev/api/revalidate,https://sanity-clone-astro-demo.caelin-deb.workers.dev/api/revalidate"
       }
     }
   },

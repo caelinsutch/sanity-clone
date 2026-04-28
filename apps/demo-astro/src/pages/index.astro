@@ -1,0 +1,22 @@
+---
+export const prerender = false
+import Base from "../layouts/Base.astro"
+import { cms } from "../lib/cms"
+import { postListQuery } from "../lib/queries"
+import type { PostListQueryResult } from "../generated"
+
+const posts = await cms.sanityFetch<PostListQueryResult>(Astro as any, postListQuery.query)
+---
+<Base title="Posts">
+  <ul class="posts">
+    {(posts ?? []).map((p) => (
+      <li>
+        <a href={`/posts/${p.slug}`}>
+          <h2>{p.title}</h2>
+          <p>{p.excerpt}</p>
+        </a>
+      </li>
+    ))}
+  </ul>
+  <p class="meta"><a href="/home">Go to the home page builder</a></p>
+</Base>

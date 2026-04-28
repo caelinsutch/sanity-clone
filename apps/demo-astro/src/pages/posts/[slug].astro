@@ -1,0 +1,25 @@
+---
+export const prerender = false
+import Base from "../../layouts/Base.astro"
+import PortableText from "../../components/PortableText.astro"
+import { cms } from "../../lib/cms"
+import { postBySlugQuery } from "../../lib/queries"
+import type { PostBySlugQueryResult } from "../../generated"
+
+const slug = Astro.params.slug ?? ""
+const post = await cms.sanityFetch<PostBySlugQueryResult>(
+  Astro as any,
+  postBySlugQuery.query,
+  { slug },
+)
+if (!post) return new Response("Not found", { status: 404 })
+---
+<Base title={post.title}>
+  <article>
+    <h1>{post.title}</h1>
+    {post.author?.name ? <p class="meta">by {post.author.name}</p> : null}
+    <div class="post-body">
+      <PortableText blocks={post.body as any} />
+    </div>
+  </article>
+</Base>

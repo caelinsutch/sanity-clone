@@ -1,0 +1,27 @@
+{
+  "name": "@apps/demo-astro",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev --port 3001",
+    "build": "astro build",
+    "preview": "astro preview --port 3001",
+    "typecheck": "astro check",
+    "typegen": "bun run ../../packages/typegen/src/cli.ts --schema ../../packages/schema/src/index.ts --queries src/lib/queries.ts --out src/generated.ts",
+    "cf:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.9",
+    "@repo/astro": "*",
+    "@repo/client": "*",
+    "@repo/core": "*",
+    "@repo/schema": "*",
+    "@repo/typegen": "*",
+    "@repo/visual-editing": "*",
+    "astro": "^5.15.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.86.0"
+  }
+}

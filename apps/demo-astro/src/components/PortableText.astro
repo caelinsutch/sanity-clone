@@ -1,0 +1,42 @@
+---
+import type { PortableTextBlock, PortableTextSpan } from "@repo/core/schema"
+interface Props { blocks: PortableTextBlock[] | null | undefined }
+const { blocks } = Astro.props
+
+function tagFor(style: string | undefined): string {
+  switch (style) {
+    case "h1": return "h1"
+    case "h2": return "h2"
+    case "h3": return "h3"
+    case "h4": return "h4"
+    case "blockquote": return "blockquote"
+    default: return "p"
+  }
+}
+
+function wrapSpan(span: PortableTextSpan): string {
+  let inner = escape(span.text ?? "")
+  for (const mark of span.marks ?? []) {
+    if (mark === "strong") inner = `<strong>${inner}</strong>`
+    else if (mark === "em") inner = `<em>${inner}</em>`
+    else if (mark === "code") inner = `<code>${inner}</code>`
+  }
+  return inner
+}
+
+function escape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}
+
+function renderBlock(block: PortableTextBlock): string {
+  const tag = tagFor(block.style)
+  const inner = block.children.map(wrapSpan).join("")
+  return `<${tag}>${inner}</${tag}>`
+}
+
+const html = (blocks ?? []).map(renderBlock).join("")
+---
+{blocks && blocks.length > 0 && <div set:html={html} />}

@@ -78,7 +78,10 @@ export class SanityCloneClient {
       // Next.js reads `next` on the init object; runtimes without it ignore.
       ...(options.next ? ({ next: options.next } as RequestInit & { next: unknown }) : {}),
     })
-    if (!res.ok) throw new Error(`Query failed: ${res.status} ${await res.text()}`)
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`Query failed: ${res.status} ${res.statusText} @ ${url.toString()} — ${body.slice(0, 200)}`)
+    }
     const body = (await res.json()) as { result: T; resultSourceMap?: ContentSourceMap; ms?: number }
 
     // Stega on/off for this request

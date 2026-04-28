@@ -1,0 +1,16 @@
+---
+import type { FeatureGridSlice } from "../../generated"
+interface Props { slice: FeatureGridSlice }
+const { slice } = Astro.props
+---
+<section class="slice slice-feature-grid">
+  {slice.heading ? <h2>{slice.heading}</h2> : null}
+  <div class="feature-grid">
+    {(slice.features ?? []).map((feature) => (
+      <div class="feature">
+        <h3>{feature.title}</h3>
+        {feature.description ? <p>{feature.description}</p> : null}
+      </div>
+    ))}
+  </div>
+</section>

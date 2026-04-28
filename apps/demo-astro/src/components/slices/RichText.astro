@@ -1,0 +1,9 @@
+---
+import type { RichTextSlice } from "../../generated"
+import PortableText from "../PortableText.astro"
+interface Props { slice: RichTextSlice }
+const { slice } = Astro.props
+---
+<section class="slice slice-rich-text">
+  <PortableText blocks={slice.body} />
+</section>

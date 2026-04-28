@@ -8,6 +8,9 @@ const nextConfig = {
     NEXT_PUBLIC_DATASET: process.env.NEXT_PUBLIC_DATASET ?? "production",
     NEXT_PUBLIC_STUDIO_URL: process.env.NEXT_PUBLIC_STUDIO_URL ?? "http://localhost:3333",
     NEXT_PUBLIC_DEMO_URL: process.env.NEXT_PUBLIC_DEMO_URL ?? "http://localhost:3000",
+    // Optional: a second preview target (Astro demo). If set, the Studio's
+    // preview toolbar shows a target selector.
+    NEXT_PUBLIC_DEMO_ASTRO_URL: process.env.NEXT_PUBLIC_DEMO_ASTRO_URL ?? "",
   },
 }
 export default nextConfig

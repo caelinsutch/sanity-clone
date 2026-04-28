@@ -20,7 +20,11 @@ scoped down to what fits in a weekend of reading the source.
 - **SSG + ISR + on-demand revalidation** on the consumer site — new-slug drafts
   preview without 404s because of dynamic-params fallback
 - **Two-way Studio ↔ preview binding** driven by schema-declared routes + locations
-- **One-call integration** for new Next.js sites via `defineCms()`
+- **Framework-agnostic integration** — first-class packages for Next.js and Astro.
+  The Studio's preview pane can render the same dataset through both side-by-side
+  to prove the CMS isn't tied to a single framework.
+- **One-call integration** for new Next.js sites via `defineCms()` (or
+  `defineAstroCms()` for Astro)
 
 ## The packages
 
@@ -31,19 +35,25 @@ apps/
                  Fires revalidation webhooks to all consumer sites on every mutation
   studio         Next.js authoring dashboard
                  Unified 4-column layout: types · documents · editor · live preview
-                 Preview iframe is bidirectionally bound to the editor
+                 Preview pane can split between Next.js and Astro demos side-by-side
   demo           Next.js consumer blog using @repo/next for integration
                  SSG with dynamicParams for new-slug preview
+  demo-astro     Astro consumer blog using @repo/astro — same CMS, different stack
 
 packages/
   core           Types (documents, mutations, perspectives, CSM) + GROQ parser + executor + validator
   client         Sanity-style HTTP client with stega encoding + CSM + Next cache hints
+                 Takes an optional `fetcher` so apps on Cloudflare Workers can
+                 route through a service binding instead of the public URL
   comlink        Typed postMessage protocol: Studio ↔ iframe
   visual-editing DOM overlay scanner + click-to-edit runtime
   schema         Example content schema — post, author, siteSettings, page (with slices)
                  Declares `routes` (URL → doc) and `locations` (doc → URL)
   next           Framework integration: defineCms() returns draft client,
                  sanityFetch, route handlers, VisualEditingBridge, staticParamsFor
+  astro          Framework integration: defineAstroCms() for Astro consumers —
+                 cookie-driven draft mode, draftRoutes APIRoute handlers,
+                 mountVisualEditing bridge for the overlay + hard-reload on mutation
   typegen        CLI + emitters: schema → TS interfaces, typed GROQ result
                  inference via `defineQuery<T>(query)`
 ```
@@ -61,13 +71,18 @@ This starts:
 
 - **API** — http://localhost:8787 (wrangler)
 - **Studio** — http://localhost:3333 (next dev)
-- **Demo** — http://localhost:3000 (next dev)
+- **Demo (Next.js)** — http://localhost:3000 (next dev)
+- **Demo (Astro)** — http://localhost:3001 (astro dev)
 
 A live deployment on Cloudflare Workers is running at:
 
 - **API** — https://sanity-clone-api.caelin-deb.workers.dev
 - **Studio** — https://sanity-clone-studio.caelin-deb.workers.dev
-- **Demo** — https://sanity-clone-demo.caelin-deb.workers.dev
+- **Demo (Next.js)** — https://sanity-clone-demo.caelin-deb.workers.dev
+- **Demo (Astro)** — https://sanity-clone-astro-demo.caelin-deb.workers.dev
+
+The Studio's preview pane has a `split` toggle — open it to see both demos
+rendering the same dataset side-by-side.
 
 See [DEPLOY.md](./DEPLOY.md) for how to stand up your own.
 

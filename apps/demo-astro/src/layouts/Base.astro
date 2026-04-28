@@ -1,0 +1,57 @@
+---
+import "../styles.css"
+import { cms } from "../lib/cms"
+import { siteSettingsQuery } from "../lib/queries"
+import type { SiteSettingsQueryResult } from "../generated"
+
+interface Props {
+  title?: string
+  description?: string
+}
+
+const { title, description } = Astro.props
+
+// `Astro` only has `cookies`/`url`/`request`/`redirect` during SSR. For pages
+// prerendered to static HTML (default in this project), draft mode and live
+// preview are automatically off — drafts are served by the SSR page routes.
+const settings = await cms.sanityFetch<SiteSettingsQueryResult>(
+  Astro as unknown as Parameters<typeof cms.sanityFetch>[0],
+  siteSettingsQuery.query,
+)
+const draft = cms.isDraftMode(Astro as unknown as Parameters<typeof cms.isDraftMode>[0])
+
+// Allow the Studio to iframe the site for live preview.
+const studio = import.meta.env.PUBLIC_STUDIO_URL ?? "http://localhost:3333"
+Astro.response.headers.set(
+  "Content-Security-Policy",
+  `frame-ancestors 'self' ${studio}`,
+)
+---
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title ?? settings?.title ?? "sanity-clone astro demo"}</title>
+    {description ? <meta name="description" content={description} /> : null}
+  </head>
+  <body>
+    <header class="site">
+      <p class="site-title">{settings?.title ?? "sanity-clone astro demo"}</p>
+      {settings?.tagline ? <p class="tagline">{settings.tagline}</p> : null}
+    </header>
+    <main>
+      <slot />
+    </main>
+    {draft ? (
+      <>
+        <div class="preview-banner">Preview — click any text to edit</div>
+        <script>
+          // Bridge is a small script that wires Comlink → full-page reload on mutation.
+          import { mountVisualEditing } from "@repo/astro/bridge"
+          mountVisualEditing()
+        </script>
+      </>
+    ) : null}
+  </body>
+</html>

@@ -1,15 +1,14 @@
 # Deploying to Cloudflare
 
-All three apps run on Cloudflare Workers:
+All apps run on Cloudflare Workers:
 
 - **API** — a plain Worker with a KV namespace for the content lake.
-- **Demo** and **Studio** — Next.js apps via [OpenNext](https://opennext.js.org/cloudflare).
+- **Next demo** and **Studio** — Next.js apps via [OpenNext](https://opennext.js.org/cloudflare).
+- **Astro demo** — Astro with the `@astrojs/cloudflare` adapter.
 
-The demo's server code calls the API. On `*.workers.dev`, a Worker can't
-`fetch()` its own subdomain — Cloudflare returns error 1042. To avoid
-this, the demo has a **service binding** to the API worker (`env.API`)
-and `@repo/next` routes server-side requests through that binding when
-present. Browsers still hit the public URL directly.
+All three consumer apps call the API through a **service binding** (`env.API`)
+because same-subdomain `*.workers.dev` → `*.workers.dev` subrequests are
+rejected with error 1042. Browsers still hit the public URL directly.
 
 ## One-time setup
 
@@ -29,9 +28,10 @@ Edit `apps/api/wrangler.json`, `apps/demo/wrangler.jsonc`, and
 bunx wrangler kv namespace create sanity-clone-content       # API content lake
 bunx wrangler kv namespace create sanity-clone-demo-cache    # Demo SSG cache
 bunx wrangler kv namespace create sanity-clone-studio-cache  # Studio SSG cache
+bunx wrangler kv namespace create sanity-clone-astro-session # Astro sessions (optional)
 ```
 
-Paste the ids into the three wrangler configs.
+Paste the ids into the four wrangler configs.
 
 ## Deploy the API
 
@@ -56,17 +56,18 @@ API_URL=https://sanity-clone-api.<sub>.workers.dev \
 bun run --filter=@apps/api seed
 ```
 
-## Deploy the Demo and Studio
+## Deploy the Next demo, Studio, and Astro demo
 
-Both Next.js apps need the prod URLs baked in at build time:
+Next.js apps need the prod URLs baked in at build time:
 
 ```bash
 export NEXT_PUBLIC_API_URL=https://sanity-clone-api.<sub>.workers.dev
 export NEXT_PUBLIC_DATASET=production
 export NEXT_PUBLIC_STUDIO_URL=https://sanity-clone-studio.<sub>.workers.dev
 export NEXT_PUBLIC_DEMO_URL=https://sanity-clone-demo.<sub>.workers.dev
+export NEXT_PUBLIC_DEMO_ASTRO_URL=https://sanity-clone-astro-demo.<sub>.workers.dev
 
-# Demo
+# Next.js demo
 bun run --filter=@apps/demo cf:build
 echo $ADMIN_TOKEN | bunx wrangler secret put CMS_READ_TOKEN --cwd apps/demo
 echo $REVALIDATE_SECRET | bunx wrangler secret put REVALIDATE_SECRET --cwd apps/demo
@@ -77,8 +78,22 @@ bun run --filter=@apps/studio cf:build
 bun run --filter=@apps/studio cf:deploy
 ```
 
-That's it — visit the Studio URL, click **Page → Home**, and you'll see the
-iframe preview the deployed demo side-by-side.
+The Astro demo uses `PUBLIC_*` env vars (Astro convention):
+
+```bash
+export PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+export PUBLIC_DATASET=production
+export PUBLIC_STUDIO_URL=$NEXT_PUBLIC_STUDIO_URL
+
+bun run --filter=@apps/demo-astro build
+echo $ADMIN_TOKEN | bunx wrangler secret put CMS_READ_TOKEN --cwd apps/demo-astro
+echo $REVALIDATE_SECRET | bunx wrangler secret put REVALIDATE_SECRET --cwd apps/demo-astro
+bun run --filter=@apps/demo-astro cf:deploy
+```
+
+That's it — visit the Studio URL, click **Page → Home**, flip the preview
+toolbar to `split`, and you'll see the same dataset rendered through both
+Next.js and Astro side-by-side.
 
 ## How revalidation works in production
 
