@@ -3,6 +3,7 @@ node_modules
 dist
 .next
 .open-next
+.astro
 .wrangler
 .env*.local
 .env
