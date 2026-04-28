@@ -7,7 +7,10 @@
     "dev": "next dev --port 3333",
     "build": "next build",
     "start": "next start --port 3333",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare deploy",
+    "cf:preview": "opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@repo/client": "*",

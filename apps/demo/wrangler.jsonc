@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sanity-clone-demo",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "deb0c7508e3246678e8d4c1c33882b20",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "NEXT_INC_CACHE_KV",
+      "id": "ed79a8a769a24418a445f491e1c60ed1"
+    }
+  ],
+  "services": [
+    {
+      "binding": "API",
+      "service": "sanity-clone-api",
+      "environment": "production"
+    }
+  ],
+  "observability": { "enabled": true }
+}

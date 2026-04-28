@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "typegen": "bun run ../../packages/typegen/src/cli.ts --schema ../../packages/schema/src/index.ts --queries src/lib/queries.ts --out src/generated.ts"
+    "typegen": "bun run ../../packages/typegen/src/cli.ts --schema ../../packages/schema/src/index.ts --queries src/lib/queries.ts --out src/generated.ts",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare deploy",
+    "cf:preview": "opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@repo/client": "*",

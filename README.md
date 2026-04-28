@@ -63,6 +63,14 @@ This starts:
 - **Studio** — http://localhost:3333 (next dev)
 - **Demo** — http://localhost:3000 (next dev)
 
+A live deployment on Cloudflare Workers is running at:
+
+- **API** — https://sanity-clone-api.caelin-deb.workers.dev
+- **Studio** — https://sanity-clone-studio.caelin-deb.workers.dev
+- **Demo** — https://sanity-clone-demo.caelin-deb.workers.dev
+
+See [DEPLOY.md](./DEPLOY.md) for how to stand up your own.
+
 Seed the dataset once:
 
 ```sh

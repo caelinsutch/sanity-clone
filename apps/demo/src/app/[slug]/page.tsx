@@ -12,7 +12,7 @@ import { PageBuilder } from "@/components/PageBuilder"
  * catches true top-level slugs like `/home`, `/about`, `/pricing`.
  */
 export async function generateStaticParams() {
-  const client = buildClient()
+  const client = await buildClient()
   const pages = await client.fetch<{ slug?: { current?: string } }[]>(
     '*[_type == "page"]{"slug": slug.current}',
   )

@@ -24,6 +24,12 @@ export interface ClientConfig {
   useCdn?: boolean
   perspective?: Perspective
   stega?: { enabled: boolean; studioUrl?: string; filter?: StegaOptions["filter"] }
+  /**
+   * Override the `fetch` implementation. Useful on Cloudflare Workers where
+   * a service binding to the API worker avoids the subrequest loop that same-
+   * subdomain `workers.dev` calls hit. Defaults to global `fetch`.
+   */
+  fetcher?: typeof fetch
 }
 
 export interface FetchOptions {
@@ -65,7 +71,8 @@ export class SanityCloneClient {
     }
     url.searchParams.set("resultSourceMap", "true")
 
-    const res = await fetch(url.toString(), {
+    const f = this.config.fetcher ?? fetch
+    const res = await f(url.toString(), {
       headers: this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {},
       ...(options.cache ? { cache: options.cache } : {}),
       // Next.js reads `next` on the init object; runtimes without it ignore.
@@ -92,7 +99,8 @@ export class SanityCloneClient {
 
   async mutate(mutations: Mutation[]): Promise<MutationResult> {
     const url = new URL(`/v1/data/mutate/${encodeURIComponent(this.config.dataset)}`, this.config.apiUrl)
-    const res = await fetch(url.toString(), {
+    const f = this.config.fetcher ?? fetch
+    const res = await f(url.toString(), {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -106,7 +114,8 @@ export class SanityCloneClient {
 
   async getDocument(id: string): Promise<SanityDocument | null> {
     const url = new URL(`/v1/data/doc/${encodeURIComponent(this.config.dataset)}/${encodeURIComponent(id)}`, this.config.apiUrl)
-    const res = await fetch(url.toString(), {
+    const f = this.config.fetcher ?? fetch
+    const res = await f(url.toString(), {
       headers: this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {},
     })
     if (res.status === 404) return null

@@ -43,7 +43,7 @@ export interface ConfiguredCms {
     options?: { tags?: string[]; revalidate?: number | false },
   ) => Promise<T>
   /** Client used from `generateStaticParams()` (no cookies involved). */
-  buildClient: () => ReturnType<typeof createClient>
+  buildClient: () => Promise<ReturnType<typeof createClient>>
   /** Route handlers. Export `GET` from a route file and assign one of these. */
   DRAFT_ROUTES: {
     enable: (req: Request) => Promise<Response>
@@ -69,23 +69,56 @@ export interface ConfiguredCms {
 export function defineCms(config: CmsConfig): ConfiguredCms {
   const cacheTag = config.cacheTag ?? "sanity"
 
+  /**
+   * On Cloudflare Workers, same-subdomain worker→worker fetches over the
+   * public `*.workers.dev` URL are rejected with error 1042. If OpenNext
+   * has provided a service binding named `API` via `getCloudflareContext`,
+   * we route all server-side API calls through it. Otherwise we use the
+   * global fetch (localhost dev, Vercel, Node, etc.).
+   */
+  async function resolveFetcher(): Promise<typeof fetch | undefined> {
+    try {
+      const mod = (await import("@opennextjs/cloudflare").catch(() => null)) as
+        | { getCloudflareContext?: () => { env?: Record<string, unknown> } }
+        | null
+      const ctx = mod?.getCloudflareContext?.()
+      const binding = ctx?.env?.API as
+        | { fetch: (req: Request | string, init?: RequestInit) => Promise<Response> }
+        | undefined
+      if (binding && typeof binding.fetch === "function") {
+        const bound = binding.fetch.bind(binding)
+        return ((input, init) => {
+          // Service bindings ignore the host; any absolute URL works.
+          return bound(input as Request | string, init as RequestInit)
+        }) as typeof fetch
+      }
+    } catch {
+      /* no-op */
+    }
+    return undefined
+  }
+
   async function getClient() {
     const { isEnabled } = await draftMode()
+    const fetcher = await resolveFetcher()
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
       perspective: isEnabled ? "drafts" : "published",
       token: isEnabled ? config.token : undefined,
       stega: { enabled: isEnabled, studioUrl: config.studioUrl },
+      fetcher,
     })
   }
 
-  function buildClient() {
+  async function buildClient() {
+    const fetcher = await resolveFetcher()
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
       perspective: "published",
       stega: { enabled: false, studioUrl: config.studioUrl },
+      fetcher,
     })
   }
 
@@ -158,7 +191,7 @@ export function defineCms(config: CmsConfig): ConfiguredCms {
       const typeDef = config.schema.types.find((t) => t.name === typeName)
       if (!typeDef?.locations) return []
 
-      const client = buildClient()
+      const client = await buildClient()
       const docs = await client.fetch<Array<Record<string, unknown>>>(
         `*[_type == "${typeName}"]`,
       )

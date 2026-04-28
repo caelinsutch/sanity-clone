@@ -1,15 +1,37 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sanity-clone-api",
   "main": "src/index.ts",
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"],
+  "account_id": "deb0c7508e3246678e8d4c1c33882b20",
   "kv_namespaces": [
-    { "binding": "CONTENT", "id": "content", "preview_id": "content" }
+    {
+      "binding": "CONTENT",
+      "id": "cacb8716fa9745259c9043583fa0727a",
+      "preview_id": "content"
+    }
   ],
   "vars": {
     "ADMIN_TOKEN": "dev-admin-token",
     "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:3333",
     "REVALIDATE_WEBHOOKS": "http://localhost:3000/api/revalidate",
     "REVALIDATE_SECRET": "dev-revalidate-secret"
-  }
+  },
+  "env": {
+    "production": {
+      "name": "sanity-clone-api",
+      "kv_namespaces": [
+        {
+          "binding": "CONTENT",
+          "id": "cacb8716fa9745259c9043583fa0727a"
+        }
+      ],
+      "vars": {
+        "ALLOWED_ORIGINS": "https://sanity-clone-demo.caelin-deb.workers.dev,https://sanity-clone-studio.caelin-deb.workers.dev",
+        "REVALIDATE_WEBHOOKS": "https://sanity-clone-demo.caelin-deb.workers.dev/api/revalidate"
+      }
+    }
+  },
+  "observability": { "enabled": true }
 }

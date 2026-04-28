@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  outputFileTracingRoot: new URL("../..", import.meta.url).pathname,
   transpilePackages: ["@repo/core", "@repo/client", "@repo/comlink", "@repo/schema"],
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787",
