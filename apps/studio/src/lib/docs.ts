@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { DATASET, API_URL, studioClient } from "./client"
+import { onLocalMutation } from "./local-mutations"
 
 export interface DocListItem {
   _id: string
@@ -37,10 +38,13 @@ export function useDocuments(type?: string): { docs: DocListItem[]; reload: () =
     listDocuments(type).then((d) => {
       if (!cancelled) setDocs(d)
     })
-    const unsub = subscribeToMutations(() => setTick((t) => t + 1))
+    const bump = () => setTick((t) => t + 1)
+    const unsubSse = subscribeToMutations(bump)
+    const unsubLocal = onLocalMutation(bump)
     return () => {
       cancelled = true
-      unsub()
+      unsubSse()
+      unsubLocal()
     }
   }, [type, tick])
   return { docs, reload: () => setTick((t) => t + 1) }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { createComlink, type ComlinkChannel } from "@repo/comlink"
 import { DEMO_URL } from "@/lib/client"
 import { subscribeToMutations } from "@/lib/docs"
+import { onLocalMutation } from "@/lib/local-mutations"
 
 /**
  * Live preview iframe of the demo site, wired to the studio via Comlink.
@@ -87,11 +88,18 @@ export function LivePreview({
     currentPathRef.current = path
   }, [path])
 
-  // Refresh the iframe when a mutation occurs.
+  // Refresh the iframe when a mutation occurs — from either the API's SSE
+  // stream (covers external/background changes) or the Studio's own local
+  // event bus (reliable + instant for edits made in this tab; doesn't rely
+  // on Cloudflare KV propagation between POPs).
   useEffect(() => {
-    return subscribeToMutations(() => {
-      comlinkRef.current?.send("presentation/refresh", { source: "mutation" })
-    })
+    const fire = () => comlinkRef.current?.send("presentation/refresh", { source: "mutation" })
+    const unsubSse = subscribeToMutations(fire)
+    const unsubLocal = onLocalMutation(fire)
+    return () => {
+      unsubSse()
+      unsubLocal()
+    }
   }, [])
 
   const initialSrc = `${DEMO_URL}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`

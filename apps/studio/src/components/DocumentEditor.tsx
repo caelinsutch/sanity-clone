@@ -7,6 +7,7 @@ import { validateDocument, type ValidationIssue } from "@repo/core/validate"
 import { draftId, isDraftId, publishedId, type SanityDocument } from "@repo/core"
 import { schema } from "@repo/schema"
 import { studioClient } from "@/lib/client"
+import { emitLocalMutation } from "@/lib/local-mutations"
 import { FieldRenderer } from "./FieldRenderer"
 
 interface Props {
@@ -80,6 +81,7 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
       // Always write to the draft id
       const did = draftId(next._id)
       await studioClient.mutate([{ createOrReplace: { ...next, _id: did } }])
+      emitLocalMutation()
       setSaveStatus("saved")
       setTimeout(() => setSaveStatus("idle"), 800)
     } catch (e) {
@@ -121,6 +123,7 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
       alert(`Publish failed: ${await res.text()}`)
       return
     }
+    emitLocalMutation()
     // Reload pair
     const { draft, published } = await loadPair(publishedId(doc._id))
     setPublished(published)
@@ -130,6 +133,7 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
   async function discardDraft() {
     if (!doc) return
     await studioClient.mutate([{ delete: { id: draftId(doc._id) } }])
+    emitLocalMutation()
     if (published) setDoc({ ...published, _id: draftId(published._id) })
     else {
       setDoc(null)
@@ -142,6 +146,7 @@ export function DocumentEditor({ type, id, onDelete }: Props) {
     if (!confirm("Delete this document (draft and published)?")) return
     const pid = publishedId(doc._id)
     await studioClient.mutate([{ delete: { id: pid } }, { delete: { id: draftId(pid) } }])
+    emitLocalMutation()
     onDelete()
   }
 
