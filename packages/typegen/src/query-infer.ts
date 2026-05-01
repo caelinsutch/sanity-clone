@@ -174,6 +174,8 @@ function fieldToTsType(field: FieldDef, schema: Schema, unknown: string): string
       return `{ _type: "reference"; _ref: string }`
     case "array":
       return `${field.of.map((f) => fieldToTsType(f, schema, unknown)).join(" | ")}[]`
+    case "blockContent":
+      return "PortableTextBlock[]"
     case "object": {
       const inner = field.fields.map((f) => `${f.name}?: ${fieldToTsType(f, schema, unknown)}`)
       return `{ ${inner.join("; ")} }`

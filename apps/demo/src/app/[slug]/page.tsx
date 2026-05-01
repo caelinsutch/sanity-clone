@@ -13,11 +13,11 @@ import { PageBuilder } from "@/components/PageBuilder"
  */
 export async function generateStaticParams() {
   const client = await buildClient()
-  const pages = await client.fetch<{ slug?: { current?: string } }[]>(
+  const pages = await client.fetch<{ slug: string }[]>(
     '*[_type == "page"]{"slug": slug.current}',
   )
   return pages
-    .map((p) => (p.slug as unknown as string | undefined) ?? null)
+    .map((p) => p.slug)
     .filter((s): s is string => !!s)
     .map((slug) => ({ slug }))
 }
