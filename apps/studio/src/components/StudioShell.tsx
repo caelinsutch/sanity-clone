@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { getTypeDef } from "@repo/core/schema"
 import { publishedId } from "@repo/core"
@@ -28,6 +28,14 @@ export function StudioShell() {
   const [selectedType, setSelectedType] = useState<string>(project.schema.types[0]!.name)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [previewPath, setPreviewPath] = useState<string>("/")
+
+  const selectDocument = useCallback((type: string, id: string) => {
+    setSelectedType((current) => (current === type ? current : type))
+    setSelectedId((current) => {
+      if (current && publishedId(current) === publishedId(id)) return current
+      return id
+    })
+  }, [])
 
   // Reset type selection when the project changes.
   useEffect(() => {
@@ -63,19 +71,17 @@ export function StudioShell() {
       if (!d || typeof d !== "object") return
       if (d.channel !== "presentation") return
       if (d.type === "visual-editing/focus") {
-        setSelectedType(d.data.type)
-        setSelectedId(d.data.documentId)
+        selectDocument(d.data.type, d.data.documentId)
       }
     }
     window.addEventListener("message", handler)
     return () => window.removeEventListener("message", handler)
-  }, [])
+  }, [selectDocument])
 
   async function onIframeNavigate(pathname: string) {
     const resolved = await resolveDocumentFromPath(project, client, pathname)
     if (resolved) {
-      setSelectedType(resolved.type)
-      setSelectedId(resolved.documentId)
+      selectDocument(resolved.type, resolved.documentId)
     }
   }
 
@@ -97,7 +103,7 @@ export function StudioShell() {
         <DocumentList
           type={selectedType}
           selectedId={selectedId}
-          onSelect={(id) => setSelectedId(id)}
+          onSelect={(id) => selectDocument(selectedType, id)}
         />
         <div
           style={{
@@ -234,23 +240,26 @@ function DocumentList({
         </button>
       </div>
       <div>
-        {docs.map((d) => (
-          <div
-            key={d._id}
-            onClick={() => onSelect(d._id)}
-            style={{
-              padding: "10px 14px",
-              borderBottom: "1px solid var(--border)",
-              background: selectedId === d._id ? "var(--panel-2)" : "transparent",
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ fontWeight: 500 }}>{d.title || d._id}</div>
-            <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>
-              {d._id}
+        {docs.map((d) => {
+          const selected = selectedId ? publishedId(selectedId) === publishedId(d._id) : false
+          return (
+            <div
+              key={d._id}
+              onClick={() => onSelect(d._id)}
+              style={{
+                padding: "10px 14px",
+                borderBottom: "1px solid var(--border)",
+                background: selected ? "var(--panel-2)" : "transparent",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontWeight: 500 }}>{d.title || d._id}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                {d._id}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {docs.length === 0 ? (
           <div style={{ padding: 14, color: "var(--muted)" }}>No documents of type {type} yet.</div>
         ) : null}
