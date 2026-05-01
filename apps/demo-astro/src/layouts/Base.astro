@@ -11,10 +11,10 @@ interface Props {
 
 const { title, description } = Astro.props
 
-const draft = !Astro.isPrerendered && cms.isDraftMode(Astro as unknown as Parameters<typeof cms.isDraftMode>[0])
+const draft = !Astro.isPrerendered && cms.isDraftMode(Astro)
 const settingsClient = draft
-  ? cms.getClient(Astro as unknown as Parameters<typeof cms.getClient>[0])
-  : cms.buildClient(Astro as unknown as Parameters<typeof cms.buildClient>[0])
+  ? cms.getClient(Astro)
+  : cms.buildClient(Astro)
 const settings = await settingsClient.fetch<SiteSettingsQueryResult>(siteSettingsQuery.query)
 
 // Allow the Studio to iframe the site for live preview.

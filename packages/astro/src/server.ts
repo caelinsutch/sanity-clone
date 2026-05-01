@@ -18,16 +18,19 @@ import { createClient, type FetchOptions } from "@repo/client"
 import type { Schema } from "@repo/core/schema"
 
 // Imported lazily to keep this file usable in non-Astro contexts (tests).
-type AstroCookies = {
+export type AstroCmsCookies = {
   get(name: string): { value: string } | undefined
   set(name: string, value: string, options?: Record<string, unknown>): void
   delete(name: string, options?: Record<string, unknown>): void
 }
-type APIContext = {
-  cookies: AstroCookies
+
+export type AstroCmsRedirectStatus = 300 | 301 | 302 | 303 | 304 | 307 | 308
+
+export type AstroCmsContext = {
+  cookies: AstroCmsCookies
   url: URL
   request: Request
-  redirect: (location: string, status?: number) => Response
+  redirect: (location: string, status?: AstroCmsRedirectStatus) => Response
   // Cloudflare-only at runtime
   locals?: {
     runtime?: {
@@ -64,19 +67,19 @@ export interface AstroCmsConfig {
 }
 
 export interface ConfiguredAstroCms {
-  getClient: (ctx: APIContext) => ReturnType<typeof createClient>
-  buildClient: (ctx?: APIContext) => ReturnType<typeof createClient>
+  getClient: (ctx: AstroCmsContext) => ReturnType<typeof createClient>
+  buildClient: (ctx?: AstroCmsContext) => ReturnType<typeof createClient>
   sanityFetch: <T = unknown>(
-    ctx: APIContext,
+    ctx: AstroCmsContext,
     query: string,
     params?: Record<string, unknown>,
     options?: FetchOptions,
   ) => Promise<T>
-  isDraftMode: (ctx: APIContext) => boolean
+  isDraftMode: (ctx: AstroCmsContext) => boolean
   draftRoutes: {
-    enable: (ctx: APIContext) => Promise<Response> | Response
-    disable: (ctx: APIContext) => Promise<Response> | Response
-    revalidate: (ctx: APIContext) => Promise<Response>
+    enable: (ctx: AstroCmsContext) => Promise<Response> | Response
+    disable: (ctx: AstroCmsContext) => Promise<Response> | Response
+    revalidate: (ctx: AstroCmsContext) => Promise<Response>
   }
   /**
    * Return an `async function getStaticPaths()` for a given document type.
@@ -90,7 +93,7 @@ export interface ConfiguredAstroCms {
 export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
   const cookieName = config.draftCookieName ?? "sanity-clone-draft"
 
-  function resolveFetcher(ctx?: APIContext): typeof fetch | undefined {
+  function resolveFetcher(ctx?: AstroCmsContext): typeof fetch | undefined {
     const binding = ctx?.locals?.runtime?.env?.API as
       | {
           fetch: (req: Request | string, init?: RequestInit) => Promise<Response>
@@ -103,11 +106,11 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
     return undefined
   }
 
-  function isDraftMode(ctx: APIContext): boolean {
+  function isDraftMode(ctx: AstroCmsContext): boolean {
     return ctx.cookies.get(cookieName)?.value === "1"
   }
 
-  function getClient(ctx: APIContext) {
+  function getClient(ctx: AstroCmsContext) {
     const draft = isDraftMode(ctx)
     return createClient({
       apiUrl: config.apiUrl,
@@ -120,7 +123,7 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
     })
   }
 
-  function buildClient(ctx?: APIContext) {
+  function buildClient(ctx?: AstroCmsContext) {
     return createClient({
       apiUrl: config.apiUrl,
       dataset: config.dataset,
@@ -132,7 +135,7 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
   }
 
   async function sanityFetch<T>(
-    ctx: APIContext,
+    ctx: AstroCmsContext,
     query: string,
     params: Record<string, unknown> = {},
     options: FetchOptions = {},
@@ -142,7 +145,7 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
   }
 
   const draftRoutes = {
-    enable(ctx: APIContext) {
+    enable(ctx: AstroCmsContext) {
       const redirect = ctx.url.searchParams.get("redirect") ?? "/"
       ctx.cookies.set(cookieName, "1", {
         path: "/",
@@ -152,12 +155,12 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
       })
       return noStore(ctx.redirect(draftRedirectFor(redirect), 307))
     },
-    disable(ctx: APIContext) {
+    disable(ctx: AstroCmsContext) {
       const redirect = ctx.url.searchParams.get("redirect") ?? "/"
       ctx.cookies.delete(cookieName, { path: "/" })
       return noStore(ctx.redirect(redirect, 307))
     },
-    async revalidate(ctx: APIContext) {
+    async revalidate(ctx: AstroCmsContext) {
       const got = ctx.request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
       if (config.revalidateSecret && got !== config.revalidateSecret) {
         return new Response(JSON.stringify({ error: "forbidden" }), {

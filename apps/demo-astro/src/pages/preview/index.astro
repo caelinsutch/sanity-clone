@@ -3,13 +3,14 @@ export const prerender = false
 
 import Base from "../../layouts/Base.astro"
 import { cms } from "../../lib/cms"
+import { setPreviewNoStore } from "../../lib/preview"
 import { postListQuery } from "../../lib/queries"
 import type { PostListQueryResult } from "../../generated"
 
-Astro.response.headers.set("cache-control", "no-store, max-age=0")
+setPreviewNoStore(Astro.response)
 
 const posts = await cms.sanityFetch<PostListQueryResult>(
-  Astro as any,
+  Astro,
   postListQuery.query,
   {},
   { cache: "no-store" },

@@ -4,14 +4,15 @@ export const prerender = false
 import Base from "../../../layouts/Base.astro"
 import PortableText from "../../../components/PortableText.astro"
 import { cms } from "../../../lib/cms"
+import { setPreviewNoStore } from "../../../lib/preview"
 import { postBySlugQuery } from "../../../lib/queries"
 import type { PostBySlugQueryResult } from "../../../generated"
 
-Astro.response.headers.set("cache-control", "no-store, max-age=0")
+setPreviewNoStore(Astro.response)
 
 const slug = Astro.params.slug ?? ""
 const post = await cms.sanityFetch<PostBySlugQueryResult>(
-  Astro as any,
+  Astro,
   postBySlugQuery.query,
   { slug },
   { cache: "no-store" },

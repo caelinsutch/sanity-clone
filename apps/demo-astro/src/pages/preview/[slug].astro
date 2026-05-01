@@ -4,14 +4,15 @@ export const prerender = false
 import Base from "../../layouts/Base.astro"
 import PageBuilder from "../../components/PageBuilder.astro"
 import { cms } from "../../lib/cms"
+import { setPreviewNoStore } from "../../lib/preview"
 import { pageBySlugQuery } from "../../lib/queries"
 import type { PageBySlugQueryResult } from "../../generated"
 
-Astro.response.headers.set("cache-control", "no-store, max-age=0")
+setPreviewNoStore(Astro.response)
 
 const slug = Astro.params.slug ?? ""
 const page = await cms.sanityFetch<PageBySlugQueryResult>(
-  Astro as any,
+  Astro,
   pageBySlugQuery.query,
   { slug },
   { cache: "no-store" },
