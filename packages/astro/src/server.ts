@@ -52,6 +52,15 @@ export interface AstroCmsConfig {
   schema?: Schema
   /** Cookie name that marks draft mode. Defaults to `sanity-clone-draft`. */
   draftCookieName?: string
+  /**
+   * Where draft-mode redirects should go.
+   *
+   * - "same-route": easiest setup for SSR Astro apps; `/foo` previews `/foo`.
+   * - "preview-prefix": keeps public pages static and previews under `/preview/foo`.
+   *
+   * Defaults to "same-route" to match Sanity's lowest-friction setup.
+   */
+  previewMode?: "same-route" | "preview-prefix"
 }
 
 export interface ConfiguredAstroCms {
@@ -141,12 +150,12 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
         secure: ctx.url.protocol === "https:",
         sameSite: "none",
       })
-      return ctx.redirect(redirect, 307)
+      return noStore(ctx.redirect(draftRedirectFor(redirect), 307))
     },
     disable(ctx: APIContext) {
       const redirect = ctx.url.searchParams.get("redirect") ?? "/"
       ctx.cookies.delete(cookieName, { path: "/" })
-      return ctx.redirect(redirect, 307)
+      return noStore(ctx.redirect(redirect, 307))
     },
     async revalidate(ctx: APIContext) {
       const got = ctx.request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
@@ -212,6 +221,17 @@ export function defineAstroCms(config: AstroCmsConfig): ConfiguredAstroCms {
     draftRoutes,
     staticPathsFor,
   }
+  function draftRedirectFor(path: string): string {
+    const clean = path.startsWith("/") ? path : `/${path}`
+    if (config.previewMode !== "preview-prefix") return clean
+    if (clean === "/") return "/preview"
+    return `/preview${clean}`
+  }
+}
+
+function noStore(response: Response): Response {
+  response.headers.set("cache-control", "no-store, max-age=0")
+  return response
 }
 
 function matchPatternStrict(pattern: string, pathname: string): Record<string, string> | null {

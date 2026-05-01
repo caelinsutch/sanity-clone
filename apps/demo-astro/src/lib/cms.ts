@@ -15,4 +15,5 @@ export const cms = defineAstroCms({
   token: CMS_READ_TOKEN,
   revalidateSecret: REVALIDATE_SECRET,
   schema,
+  previewMode: "preview-prefix",
 })

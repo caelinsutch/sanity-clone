@@ -1,14 +1,14 @@
 ---
-export const prerender = false
 import Base from "../layouts/Base.astro"
 import PageBuilder from "../components/PageBuilder.astro"
 import { cms } from "../lib/cms"
 import { pageBySlugQuery } from "../lib/queries"
 import type { PageBySlugQueryResult } from "../generated"
 
+export const getStaticPaths = cms.staticPathsFor("page")
+
 const slug = Astro.params.slug ?? ""
-const page = await cms.sanityFetch<PageBySlugQueryResult>(
-  Astro as any,
+const page = await cms.buildClient().fetch<PageBySlugQueryResult>(
   pageBySlugQuery.query,
   { slug },
 )

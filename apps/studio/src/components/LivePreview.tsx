@@ -30,20 +30,35 @@ export function LivePreview({
 }) {
   const { project } = useProject()
   const demoUrl = project.demoUrl
+  const previewPathPrefix = project.previewPathPrefix
 
-  const [displayUrl, setDisplayUrl] = useState(`${demoUrl}${path}`)
+  const [displayUrl, setDisplayUrl] = useState(
+    `${demoUrl}${previewPathPrefix ? previewPathFor(path, previewPathPrefix) : path}`,
+  )
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const comlinkRef = useRef<ComlinkChannel | null>(null)
   const currentPathRef = useRef<string>(path)
+  const currentIframePathRef = useRef<string>(
+    previewPathPrefix ? previewPathFor(path, previewPathPrefix) : path,
+  )
+  const desiredPathRef = useRef<string>(path)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    desiredPathRef.current = path
+  }, [path])
 
   useEffect(() => {
     const iframe = iframeRef.current
     if (!iframe) return
     // Project changed — reload iframe to the new demo origin.
-    iframe.src = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(currentPathRef.current || "/")}`
-    setDisplayUrl(`${demoUrl}${currentPathRef.current || "/"}`)
-  }, [demoUrl])
+    const canonicalPath = currentPathRef.current || "/"
+    iframe.src = draftEnableUrl(demoUrl, canonicalPath)
+    currentIframePathRef.current = previewPathPrefix
+      ? previewPathFor(canonicalPath, previewPathPrefix)
+      : canonicalPath
+    setDisplayUrl(`${demoUrl}${currentIframePathRef.current}`)
+  }, [demoUrl, previewPathPrefix])
 
   useEffect(() => {
     const iframe = iframeRef.current
@@ -64,14 +79,20 @@ export function LivePreview({
             )
           } else if (type === "visual-editing/navigated") {
             const u = new URL((data as { url: string }).url)
-            currentPathRef.current = u.pathname
+            currentIframePathRef.current = u.pathname
             setDisplayUrl(u.toString())
-            onNavigate?.(u.pathname)
+            const canonicalPath = stripPreviewPath(u.pathname, previewPathPrefix)
+            currentPathRef.current = canonicalPath
+            onNavigate?.(canonicalPath)
+            syncToDesiredPath(canonicalPath)
           } else if (type === "visual-editing/ready") {
             const u = new URL((data as { href: string }).href)
-            currentPathRef.current = u.pathname
+            currentIframePathRef.current = u.pathname
             setDisplayUrl(u.toString())
-            onNavigate?.(u.pathname)
+            const canonicalPath = stripPreviewPath(u.pathname, previewPathPrefix)
+            currentPathRef.current = canonicalPath
+            onNavigate?.(canonicalPath)
+            syncToDesiredPath(canonicalPath)
           }
         },
       })
@@ -84,18 +105,35 @@ export function LivePreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoUrl])
 
+  function syncToDesiredPath(canonicalPath: string) {
+    const desired = desiredPathRef.current || "/"
+    if (canonicalPath === desired) return
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const nextPath = previewPathPrefix ? previewPathFor(desired, previewPathPrefix) : desired
+    iframe.src = `${demoUrl}${nextPath}`
+    currentPathRef.current = desired
+    currentIframePathRef.current = nextPath
+    setDisplayUrl(`${demoUrl}${nextPath}`)
+  }
+
   // Ask the iframe to navigate when the incoming `path` changes.
   useEffect(() => {
     if (!path) return
-    if (currentPathRef.current === path) return
+    const nextIframePath = previewPathPrefix ? previewPathFor(path, previewPathPrefix) : path
+    if (currentPathRef.current === path && currentIframePathRef.current === nextIframePath) return
     const link = comlinkRef.current
-    if (link) {
+    if (previewPathPrefix && iframeRef.current) {
+      iframeRef.current.src = `${demoUrl}${nextIframePath}`
+    } else if (link) {
       link.send("presentation/navigate", { type: "push", url: `${demoUrl}${path}` })
     } else if (iframeRef.current) {
-      iframeRef.current.src = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path)}`
+      iframeRef.current.src = draftEnableUrl(demoUrl, path)
     }
     currentPathRef.current = path
-  }, [path, demoUrl])
+    currentIframePathRef.current = nextIframePath
+    setDisplayUrl(`${demoUrl}${nextIframePath}`)
+  }, [path, demoUrl, previewPathPrefix])
 
   // Refresh on mutations — SSE (scoped to the project's dataset) + local bus.
   useEffect(() => {
@@ -106,7 +144,15 @@ export function LivePreview({
         refreshTimerRef.current = null
         const iframe = iframeRef.current
         if (!iframe) return
-        iframe.src = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(currentPathRef.current || "/")}`
+        const canonicalPath = currentPathRef.current || "/"
+        if (previewPathPrefix) {
+          const nextPath = previewPathFor(canonicalPath, previewPathPrefix)
+          iframe.src = `${demoUrl}${nextPath}`
+          currentIframePathRef.current = nextPath
+        } else {
+          iframe.src = draftEnableUrl(demoUrl, canonicalPath)
+          currentIframePathRef.current = canonicalPath
+        }
       }, 1500)
     }
     const unsubSse = subscribeToMutations(project.dataset, fire)
@@ -118,7 +164,7 @@ export function LivePreview({
     }
   }, [demoUrl, project.dataset])
 
-  const initialSrc = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`
+  const initialSrc = draftEnableUrl(demoUrl, path || "/")
 
   return (
     <div
@@ -179,4 +225,21 @@ export function LivePreview({
       />
     </div>
   )
+}
+
+function stripPreviewPath(pathname: string, prefix: string | undefined): string {
+  if (!prefix) return pathname
+  if (pathname === prefix) return "/"
+  if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length)
+  return pathname
+}
+
+function previewPathFor(pathname: string, prefix: string): string {
+  const clean = pathname.startsWith("/") ? pathname : `/${pathname}`
+  if (clean === "/") return prefix
+  return `${prefix}${clean}`
+}
+
+function draftEnableUrl(demoUrl: string, path: string): string {
+  return `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`
 }

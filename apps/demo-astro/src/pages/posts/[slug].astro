@@ -1,14 +1,14 @@
 ---
-export const prerender = false
 import Base from "../../layouts/Base.astro"
 import PortableText from "../../components/PortableText.astro"
 import { cms } from "../../lib/cms"
 import { postBySlugQuery } from "../../lib/queries"
 import type { PostBySlugQueryResult } from "../../generated"
 
+export const getStaticPaths = cms.staticPathsFor("post")
+
 const slug = Astro.params.slug ?? ""
-const post = await cms.sanityFetch<PostBySlugQueryResult>(
-  Astro as any,
+const post = await cms.buildClient().fetch<PostBySlugQueryResult>(
   postBySlugQuery.query,
   { slug },
 )

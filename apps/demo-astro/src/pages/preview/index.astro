@@ -1,0 +1,30 @@
+---
+export const prerender = false
+
+import Base from "../../layouts/Base.astro"
+import { cms } from "../../lib/cms"
+import { postListQuery } from "../../lib/queries"
+import type { PostListQueryResult } from "../../generated"
+
+Astro.response.headers.set("cache-control", "no-store, max-age=0")
+
+const posts = await cms.sanityFetch<PostListQueryResult>(
+  Astro as any,
+  postListQuery.query,
+  {},
+  { cache: "no-store" },
+)
+---
+<Base title="Posts">
+  <ul class="posts">
+    {(posts ?? []).map((p) => (
+      <li>
+        <a href={`/preview/posts/${p.slug}`}>
+          <h2>{p.title}</h2>
+          <p>{p.excerpt}</p>
+        </a>
+      </li>
+    ))}
+  </ul>
+  <p class="meta"><a href="/preview/home">Go to the home page builder</a></p>
+</Base>

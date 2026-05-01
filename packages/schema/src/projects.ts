@@ -28,6 +28,8 @@ export interface Project {
   demoUrl: string
   /** Display label for the preview target. */
   previewLabel: string
+  /** Optional dynamic preview path prefix for static-site preview routes. */
+  previewPathPrefix?: string
 }
 
 export const projects: Project[] = [
@@ -54,6 +56,7 @@ export const projects: Project[] = [
       (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEMO_ASTRO_URL) ||
       "http://localhost:3001",
     previewLabel: "Astro",
+    previewPathPrefix: "/preview",
   },
 ]
 

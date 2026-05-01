@@ -1,0 +1,27 @@
+---
+export const prerender = false
+
+import Base from "../../layouts/Base.astro"
+import PageBuilder from "../../components/PageBuilder.astro"
+import { cms } from "../../lib/cms"
+import { pageBySlugQuery } from "../../lib/queries"
+import type { PageBySlugQueryResult } from "../../generated"
+
+Astro.response.headers.set("cache-control", "no-store, max-age=0")
+
+const slug = Astro.params.slug ?? ""
+const page = await cms.sanityFetch<PageBySlugQueryResult>(
+  Astro as any,
+  pageBySlugQuery.query,
+  { slug },
+  { cache: "no-store" },
+)
+if (!page) Astro.response.status = 404
+---
+{page ? (
+  <Base title={page.title}>
+    <PageBuilder slices={page.slices ?? null} />
+  </Base>
+) : (
+  <p>Not found</p>
+)}

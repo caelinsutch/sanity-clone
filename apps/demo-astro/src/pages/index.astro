@@ -1,11 +1,10 @@
 ---
-export const prerender = false
 import Base from "../layouts/Base.astro"
 import { cms } from "../lib/cms"
 import { postListQuery } from "../lib/queries"
 import type { PostListQueryResult } from "../generated"
 
-const posts = await cms.sanityFetch<PostListQueryResult>(Astro as any, postListQuery.query)
+const posts = await cms.buildClient().fetch<PostListQueryResult>(postListQuery.query)
 ---
 <Base title="Posts">
   <ul class="posts">
