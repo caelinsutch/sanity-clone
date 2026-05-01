@@ -65,6 +65,28 @@ describe("encodeResultWithCsm", () => {
     expect(payload.href).toContain("path=title")
   })
 
+  test("maps CSM array segments to Studio bracket paths", () => {
+    const sliceCsm: ContentSourceMap = {
+      documents: [{ _id: "page-home", _type: "page" }],
+      paths: ["$['slices']['0']['heading']"],
+      mappings: {
+        "$['slices'][0]['heading']": {
+          type: "value",
+          source: { type: "documentValue", document: 0, path: 0 },
+        },
+      },
+    }
+    const out = encodeResultWithCsm(
+      { slices: [{ heading: "Hero" }] },
+      sliceCsm,
+      { studioUrl: "https://s.example", projectId: "next-blog" },
+    )
+    const decoded = decodeStega(out.slices[0]!.heading)
+    expect(decoded).not.toBeNull()
+    const payload = JSON.parse(decoded!.payload) as { href: string }
+    expect(decodeURIComponent(payload.href)).toContain("path=slices[0].heading")
+  })
+
   test("leaves fields without CSM mappings untouched", () => {
     const result = { other: "no mapping" }
     const out = encodeResultWithCsm(result, csm, { studioUrl: "https://s.example" })

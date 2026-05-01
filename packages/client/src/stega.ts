@@ -148,13 +148,18 @@ function buildIntentUrl(
   projectId: string | undefined,
 ): string {
   // Map CSM path `$['author']['name']` -> Studio path `author.name`
-  const clean = path.replace(/^\$/, "").replace(/\[(\d+)\]/g, "[$1]")
+  const clean = path.replace(/^\$/, "")
   const parts: string[] = []
   const re = /\['([^']+)'\]|\[(\d+)\]/g
   let m: RegExpExecArray | null
   while ((m = re.exec(clean))) {
-    if (m[1] !== undefined) parts.push(m[1])
-    else if (m[2] !== undefined) parts[parts.length - 1] = `${parts[parts.length - 1] ?? ""}[${m[2]}]`
+    const segment = m[1] ?? m[2]
+    if (segment === undefined) continue
+    if (/^\d+$/.test(segment)) {
+      parts[parts.length - 1] = `${parts[parts.length - 1] ?? ""}[${segment}]`
+    } else {
+      parts.push(segment)
+    }
   }
   const studioPath = parts.join(".")
   const id = docId.replace(/^drafts\./, "")

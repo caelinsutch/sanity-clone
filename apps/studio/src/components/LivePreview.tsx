@@ -35,6 +35,7 @@ export function LivePreview({
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const comlinkRef = useRef<ComlinkChannel | null>(null)
   const currentPathRef = useRef<string>(path)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const iframe = iframeRef.current
@@ -98,14 +99,24 @@ export function LivePreview({
 
   // Refresh on mutations — SSE (scoped to the project's dataset) + local bus.
   useEffect(() => {
-    const fire = () => comlinkRef.current?.send("presentation/refresh", { source: "mutation" })
+    const fire = () => {
+      comlinkRef.current?.send("presentation/refresh", { source: "mutation" })
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null
+        const iframe = iframeRef.current
+        if (!iframe) return
+        iframe.src = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(currentPathRef.current || "/")}`
+      }, 1500)
+    }
     const unsubSse = subscribeToMutations(project.dataset, fire)
     const unsubLocal = onLocalMutation(fire)
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       unsubSse()
       unsubLocal()
     }
-  }, [project.dataset])
+  }, [demoUrl, project.dataset])
 
   const initialSrc = `${demoUrl}/api/draft/enable?redirect=${encodeURIComponent(path || "/")}`
 
