@@ -9,6 +9,10 @@ type Slice = NonNullable<Page["slices"]>[number]
 
 interface Props { slices: Page["slices"] | null | undefined }
 const { slices } = Astro.props
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled slice type: ${JSON.stringify(value)}`)
+}
 ---
 {(slices ?? []).map((slice: Slice) => {
   switch (slice._type) {
@@ -17,10 +21,9 @@ const { slices } = Astro.props
     case "ctaSlice": return <Cta slice={slice} />
     case "richTextSlice": return <RichText slice={slice} />
     default: {
-      // Exhaustive check — adding a new slice type in the schema forces this
-      // branch to narrow to `never`, surfacing the missing component at build.
-      const _exhaustive: never = slice
-      return null
+      // Adding a new slice type in the schema forces this branch to fail typecheck
+      // until the matching component is added.
+      return assertNever(slice)
     }
   }
 })}
